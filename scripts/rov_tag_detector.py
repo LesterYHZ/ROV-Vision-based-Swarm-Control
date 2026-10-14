@@ -2,8 +2,8 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from geometry_msgs.msg import PoseStamped
 from cv_bridge import CvBridge
+from dave_robot_models.msg import AprilTagDetection, AprilTagDetectionArray
 import cv2
 import numpy as np
 from pupil_apriltags import Detector
@@ -51,7 +51,7 @@ class RovTagDetector(Node):
             callback = lambda msg, r_name=robot_name: self.image_callback(msg, r_name)
             
             sub = self.create_subscription(Image, image_topic, callback, 10)
-            pub = self.create_publisher(PoseStamped, pose_topic, 10)
+            pub = self.create_publisher(AprilTagDetectionArray, pose_topic, 10)
             
             self.subs.append(sub)
             self.pose_pubs.append((robot_name, pub))
@@ -73,6 +73,10 @@ class RovTagDetector(Node):
                                     camera_params=self.camera_params, 
                                     tag_size=self.tag_size)
 
+        detection_msg = AprilTagDetectionArray()
+        detection_msg.header.stamp = msg.header.stamp
+        detection_msg.header.frame_id = f"{robot_name}/front_camera_optical_frame"
+
         for tag in tags:
             # Extract detected tag information.
             tag_id = tag.tag_id
@@ -92,23 +96,16 @@ class RovTagDetector(Node):
                 f"Relative distance: {distance:.2f}m | Relative coordinates: X={t_vec[0]:.2f}, Y={t_vec[1]:.2f}, Z={t_vec[2]:.2f}"
             )
 
-            # Encapsulate and publish the ROS 2 standard PoseStamped message.
-            pose_msg = PoseStamped()
-            pose_msg.header.stamp = self.get_clock().now().to_msg()
-            pose_msg.header.frame_id = f"{robot_name}/front_camera_optical_frame"
-            
-            pose_msg.pose.position.x = t_vec[0]
-            pose_msg.pose.position.y = t_vec[1]
-            pose_msg.pose.position.z = t_vec[2]
-            pose_msg.pose.orientation.x = quat[0]
-            pose_msg.pose.orientation.y = quat[1]
-            pose_msg.pose.orientation.z = quat[2]
-            pose_msg.pose.orientation.w = quat[3]
-
-            # Locate the corresponding publisher and broadcast the 3D coordinates.
-            for r_name, pub in self.pose_pubs:
-                if r_name == robot_name:
-                    pub.publish(pose_msg)
+            detection = AprilTagDetection()
+            detection.id = int(tag_id)
+            detection.pose.position.x = float(t_vec[0])
+            detection.pose.position.y = float(t_vec[1])
+            detection.pose.position.z = float(t_vec[2])
+            detection.pose.orientation.x = float(quat[0])
+            detection.pose.orientation.y = float(quat[1])
+            detection.pose.orientation.z = float(quat[2])
+            detection.pose.orientation.w = float(quat[3])
+            detection_msg.detections.append(detection)
 
             # Draw detection bounding boxes and ID labels on the OpenCV frame.
             for j in range(4):
@@ -118,7 +115,11 @@ class RovTagDetector(Node):
             cv2.putText(cv_image, f"TAG ID: {tag_id}", (int(tag.center[0])-40, int(tag.center[1])-10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
-        # pop-up windows display the visualized rendered view 
+        for r_name, pub in self.pose_pubs:
+            if r_name == robot_name:
+                pub.publish(detection_msg)
+
+        # pop-up windows display the visualized rendered view
         cv2.imshow(f"Detection View - {robot_name}", cv_image)
         cv2.waitKey(1)
 
