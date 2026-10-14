@@ -23,8 +23,8 @@ class RovTagDetector(Node):
                                  debug=0)
 
         # 2. [Definition of Camera Matrix (Intrinsic Parameters)]
-	#    These parameters determine the accuracy of back-projecting 2D image pixels to 3D spatial locations. 
-	#    640x480 resolution and a field of view of approximately 80 degrees (1.396 rad).
+	    #    These parameters determine the accuracy of back-projecting 2D image pixels to 3D spatial locations. 
+	    #    640x480 resolution and a field of view of approximately 80 degrees (1.396 rad).
         self.fx = 381.36  # Focal length X
         self.fy = 381.36  # Focal length Y
         self.cx = 320.0   # Optical center X
