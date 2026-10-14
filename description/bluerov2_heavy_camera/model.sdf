@@ -48,48 +48,48 @@
       </sensor>
       
       <!-- 后置 AprilTag 平面 -->
-	<visual name="apriltag_visual">
-	<pose>-0.25 0 0 0 -1.5708 0</pose> <!-- 位于车体后方，翻转 90 度面向正后方 -->
-	<geometry>
-	<plane>
-	<normal>0 0 1</normal>
-	<size>0.15 0.15</size> <!-- 15cm x 15cm 的 Tag 大小 -->
-	</plane>
-	</geometry>
-	<material>
-	<!-- 关键修复 1：强行注入基础环境光和漫反射基础色（白色），防止光照乘积变黑 -->
-	    <ambient>1.0 1.0 1.0 1.0</ambient>
-	    <diffuse>1.0 1.0 1.0 1.0</diffuse>
-	    <specular>0.1 0.1 0.1 1.0</specular>
-	<!-- 使用独特的材质名称，方便后续通过 Launch 参数或脚本查找替换 -->
-	<pbr>
-	<metal>
-	<albedo_map>model://description/bluerov2_heavy_camera/materials/textures/tag36h11_placeholder.png</albedo_map>
-	<metalness>0.0</metalness>
-        <roughness>1.0</roughness>
-	</metal>
-	</pbr>
-	</material>
-	</visual>
+      <visual name="apriltag_visual">
+        <pose>-0.25 0 0 0 -1.5708 0</pose> <!-- 位于车体后方，翻转 90 度面向正后方 -->
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.15 0.15</size> <!-- 15cm x 15cm 的 Tag 大小 -->
+            </plane>
+          </geometry>
+        <material>
+    <!-- 关键修复 1：强行注入基础环境光和漫反射基础色（白色），防止光照乘积变黑 -->
+        <ambient>1.0 1.0 1.0 1.0</ambient>
+        <diffuse>1.0 1.0 1.0 1.0</diffuse>
+        <specular>0.1 0.1 0.1 1.0</specular>
+    <!-- 使用独特的材质名称，方便后续通过 Launch 参数或脚本查找替换 -->
+        <pbr>
+          <metal>
+            <albedo_map>model://description/bluerov2_heavy_camera/materials/textures/tag36h11_placeholder.png</albedo_map>
+            <metalness>0.0</metalness>
+            <roughness>1.0</roughness>
+          </metal>
+        </pbr>
+        </material>
+      </visual>
 	
-	<!-- 前置摄像头 -->
-	<sensor name="front_camera" type="camera">
-	  <pose>0.25 0 0 0 0 0</pose> <!-- 位于车体前方中心 (X轴正方向) -->
-	  <update_rate>30.0</update_rate>
-	  <topic>front_camera/image_raw</topic>
-	  <camera>
-	    <horizontal_fov>1.3962634</horizontal_fov> <!-- 约 80 度视角 -->
-	    <image>
-	      <width>640</width>
-	      <height>480</height>
-	      <format>R8G8B8</format>
-	    </image>
-	    <clip>
-	      <near>0.1</near>
-	      <far>10.0</far>
-	    </clip>
-	  </camera>
-	</sensor>
+    <!-- 前置摄像头 -->
+    <sensor name="front_camera" type="camera">
+      <pose>0.25 0 0 0 0 0</pose> <!-- 位于车体前方中心 (X轴正方向) -->
+      <update_rate>30.0</update_rate>
+      <topic>front_camera/image_raw</topic>
+      <camera>
+        <horizontal_fov>1.3962634</horizontal_fov> <!-- 约 80 度视角 -->
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.1</near>
+          <far>20.0</far>
+        </clip>
+      </camera>
+    </sensor>
 
     </link>
 
