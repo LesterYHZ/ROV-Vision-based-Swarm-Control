@@ -8,6 +8,7 @@ install(
     scripts/ardusub_manual_control.py
     scripts/keyboard_publisher.py
     scripts/ws_to_joy.py
+    scripts/rov_tag_detector.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
