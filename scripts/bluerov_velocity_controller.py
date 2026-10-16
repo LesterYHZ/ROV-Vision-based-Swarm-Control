@@ -9,7 +9,7 @@ from std_msgs.msg import Float64
 
 
 class BlueROVVelocityController(Node):
-    """Track body-frame u, v, w velocities and an absolute heading psi."""
+    """Track body-frame u, v, w velocities and yaw rate r."""
 
     def __init__(self):
         super().__init__("bluerov_velocity_controller")
@@ -23,7 +23,7 @@ class BlueROVVelocityController(Node):
         self.declare_parameter("sway_gain", 1.0)
         self.declare_parameter("heave_gain", 1.0)
         self.declare_parameter("yaw_gain", 0.5)
-        self.declare_parameter("max_yaw_command", 1.0)
+        self.declare_parameter("max_yaw_rate", 1.0)
         self.declare_parameter("max_thruster_command", 1.0)
 
         self.input_topic = self.get_parameter("input_topic").value
@@ -35,8 +35,8 @@ class BlueROVVelocityController(Node):
         self.sway_gain = float(self.get_parameter("sway_gain").value)
         self.heave_gain = float(self.get_parameter("heave_gain").value)
         self.yaw_gain = float(self.get_parameter("yaw_gain").value)
-        self.max_yaw_command = float(
-            self.get_parameter("max_yaw_command").value
+        self.max_yaw_rate = float(
+            self.get_parameter("max_yaw_rate").value
         )
         self.max_thruster_command = float(
             self.get_parameter("max_thruster_command").value
@@ -50,8 +50,8 @@ class BlueROVVelocityController(Node):
             raise ValueError("publish_rate must be greater than zero")
         if self.max_thruster_command <= 0.0:
             raise ValueError("max_thruster_command must be greater than zero")
-        if self.max_yaw_command <= 0.0:
-            raise ValueError("max_yaw_command must be greater than zero")
+        if self.max_yaw_rate <= 0.0:
+            raise ValueError("max_yaw_rate must be greater than zero")
 
         self.subscription = self.create_subscription(
             Twist,
@@ -77,13 +77,14 @@ class BlueROVVelocityController(Node):
         self.last_command = (0.0, 0.0, 0.0, 0.0)
         self.last_command_time = self.get_clock().now()
         self.current_body_velocity = (0.0, 0.0, 0.0)
+        self.current_yaw_rate = 0.0
         self.current_yaw = 0.0
         self.have_odometry = False
         self.timer = self.create_timer(1.0 / publish_rate, self._publish_setpoint)
 
         self.get_logger().info(
             "Velocity controller started | "
-            f"input={self.input_topic} (body u/v/w/psi), odometry={self.odometry_topic}, "
+            f"input={self.input_topic} (body u/v/w/r), odometry={self.odometry_topic}, "
             f"max_speed={self.max_speed:.2f} m/s"
         )
 
@@ -103,10 +104,10 @@ class BlueROVVelocityController(Node):
         u = float(message.linear.x)
         v = float(message.linear.y)
         w = float(message.linear.z)
-        psi = float(message.angular.z)
+        yaw_rate = float(message.angular.z)
         speed = math.sqrt(u * u + v * v + w * w)
 
-        if not all(math.isfinite(value) for value in (u, v, w, psi, speed)):
+        if not all(math.isfinite(value) for value in (u, v, w, yaw_rate, speed)):
             self.get_logger().warning("Ignoring non-finite body velocity command")
             return
 
@@ -116,7 +117,7 @@ class BlueROVVelocityController(Node):
             v *= scale
             w *= scale
 
-        self.last_command = (u, v, w, psi)
+        self.last_command = (u, v, w, yaw_rate)
         self.last_command_time = self.get_clock().now()
 
     def _on_odometry(self, message):
@@ -124,16 +125,17 @@ class BlueROVVelocityController(Node):
         sin_yaw = 2.0 * (q.w * q.z + q.x * q.y)
         cos_yaw = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
         self.current_yaw = math.atan2(sin_yaw, cos_yaw)
-        world_vx = float(message.twist.twist.linear.x)
-        world_vy = float(message.twist.twist.linear.y)
-        world_vz = float(message.twist.twist.linear.z)
+        # Gazebo's odometry publisher reports twist in the child/base frame.
+        # These are therefore already the body-frame u, v, w velocities.
+        body_u = float(message.twist.twist.linear.x)
+        body_v = float(message.twist.twist.linear.y)
+        body_w = float(message.twist.twist.linear.z)
         self.current_body_velocity = (
-            math.cos(self.current_yaw) * world_vx
-            + math.sin(self.current_yaw) * world_vy,
-            -math.sin(self.current_yaw) * world_vx
-            + math.cos(self.current_yaw) * world_vy,
-            world_vz,
+            body_u,
+            body_v,
+            body_w,
         )
+        self.current_yaw_rate = float(message.twist.twist.angular.z)
         self.have_odometry = True
 
     def _publish_setpoint(self):
@@ -144,30 +146,33 @@ class BlueROVVelocityController(Node):
             self._publish_thrusters([0.0] * 8)
             return
 
-        u, v, w, psi = self.last_command if age <= self.command_timeout else (0.0, 0.0, 0.0, self.current_yaw)
+        u, v, w, yaw_rate = (
+            self.last_command
+            if age <= self.command_timeout
+            else (0.0, 0.0, 0.0, 0.0)
+        )
         surge = self.surge_gain * (u - self.current_body_velocity[0])
         sway = self.sway_gain * (v - self.current_body_velocity[1])
         heave = self.heave_gain * (w - self.current_body_velocity[2])
-        yaw_error = math.atan2(
-            math.sin(psi - self.current_yaw),
-            math.cos(psi - self.current_yaw),
-        )
-        yaw = self.yaw_gain * yaw_error
+        yaw = self.yaw_gain * (yaw_rate - self.current_yaw_rate)
 
         scale = max(self.max_speed, 1e-6)
         surge = max(-1.0, min(1.0, surge / scale))
         sway = max(-1.0, min(1.0, sway / scale))
         heave = max(-1.0, min(1.0, heave / scale))
-        yaw = max(-self.max_yaw_command, min(self.max_yaw_command, yaw))
+        yaw = max(-self.max_yaw_rate, min(self.max_yaw_rate, yaw))
 
+        # The SDF reverses the thrust coefficients of thrusters 3, 4, 6, and
+        # 7. These signs compensate for that convention and prevent a pure
+        # surge/heave command from becoming a yaw or roll moment.
         commands = [
-            surge - sway + yaw,
-            surge + sway - yaw,
             surge + sway + yaw,
             surge - sway - yaw,
+            -surge - sway + yaw,
+            -surge + sway - yaw,
             heave,
-            heave,
-            heave,
+            -heave,
+            -heave,
             heave,
         ]
         peak = max(1.0, max(abs(command) for command in commands))

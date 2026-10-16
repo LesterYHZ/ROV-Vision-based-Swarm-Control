@@ -10,7 +10,7 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "input_topic",
                 default_value="/motion_vector",
-                description="Body-frame Twist command topic (u, v, w, psi)",
+                description="Body-frame Twist command topic (u, v, w, r)",
             ),
             DeclareLaunchArgument(
                 "odometry_topic",
