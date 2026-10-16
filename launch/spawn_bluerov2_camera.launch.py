@@ -18,6 +18,8 @@ def launch_setup(context, *args, **kwargs):
     roll = LaunchConfiguration('roll').perform(context)
     pitch = LaunchConfiguration('pitch').perform(context)
     yaw = LaunchConfiguration('yaw').perform(context)
+    max_speed = float(LaunchConfiguration("max_speed").perform(context))
+    command_timeout = float(LaunchConfiguration("command_timeout").perform(context))
 
     # 2. 定位我们在 description 目录下的原始自定义模型模板 (SDF)
     pkg_share = get_package_share_directory('dave_robot_models')
@@ -57,6 +59,14 @@ def launch_setup(context, *args, **kwargs):
         "<topic>front_camera/image_raw</topic>",
         f"<topic>/model/{namespace}/front_camera/image_raw</topic>",
     )
+    modified_sdf_content = modified_sdf_content.replace(
+        "<namespace>bluerov2_heavy_camera</namespace>",
+        f"<namespace>{namespace}</namespace>",
+    )
+    modified_sdf_content = modified_sdf_content.replace(
+        "/model/bluerov2_heavy_camera/",
+        f"/model/{namespace}/",
+    )
 
     # 4. 在系统临时目录生成实例专属的隐藏临时加载 SDF 文件
     tmp_dir = tempfile.gettempdir()
@@ -92,6 +102,7 @@ def launch_setup(context, *args, **kwargs):
             "pitch": pitch,
             "yaw": yaw,
             "use_ned_frame": LaunchConfiguration("use_ned_frame"),
+            "use_ardusub": LaunchConfiguration("use_ardusub"),
             "use_teleop": LaunchConfiguration("use_teleop"),
             "use_web_joystick": LaunchConfiguration("use_web_joystick"),
             "joystick_ws_host": LaunchConfiguration("joystick_ws_host"),
@@ -110,22 +121,41 @@ def launch_setup(context, *args, **kwargs):
     gz_topic = f"/model/{namespace}/front_camera/image_raw"
     ros_topic = f"/model/{namespace}/image_raw"
     
-    bridge_argument = f"{gz_topic}@sensor_msgs/msg/Image[gz.msgs.Image"
+    bridge_arguments = [
+        f"{gz_topic}@sensor_msgs/msg/Image[gz.msgs.Image",
+        f"/model/{namespace}/odometry@nav_msgs/msg/Odometry[gz.msgs.Odometry",
+    ]
+    bridge_arguments.extend(
+        f"/model/{namespace}/joint/thruster{i}_joint/cmd_thrust"
+        "@std_msgs/msg/Float64@gz.msgs.Double"
+        for i in range(1, 9)
+    )
     
     camera_bridge_node = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
-        arguments=[bridge_argument],
+        arguments=bridge_arguments,
         remappings=[
             (gz_topic, ros_topic)
         ],
         parameters=[{'use_sim_time': True}],
         output='screen'
     )
-    
 
-    # 返回加载项，确保生成机器人的同时，相机数据通道也被立刻打通
-    return [robot_launch, camera_bridge_node]
+    velocity_controller_node = Node(
+        package="dave_robot_models",
+        executable="bluerov_velocity_controller.py",
+        name=f"{namespace}_velocity_controller",
+        output="screen",
+        parameters=[{
+            "input_topic": f"/model/{namespace}/motion_vector",
+            "mavros_namespace": "mavros",
+            "max_speed": max_speed,
+            "command_timeout": command_timeout,
+        }],
+    )
+
+    return [robot_launch, camera_bridge_node, velocity_controller_node]
 
 
 def generate_launch_description():
@@ -149,6 +179,7 @@ def generate_launch_description():
         DeclareLaunchArgument("pitch", default_value="0.0", description="Initial pitch angle"),
         DeclareLaunchArgument("yaw", default_value="0.0", description="Initial yaw angle"),
         DeclareLaunchArgument("use_ned_frame", default_value="false", description="Use NED frame"),
+        DeclareLaunchArgument("use_ardusub", default_value="false", description="Launch ArduSub/MAVROS"),
         DeclareLaunchArgument("use_teleop", default_value="true", description="Launch teleop bridge"),
         DeclareLaunchArgument("use_web_joystick", default_value="true", description="Launch websocket joystick bridge"),
         DeclareLaunchArgument("joystick_ws_host", default_value="0.0.0.0", description="Bind host for websocket"),
@@ -158,6 +189,8 @@ def generate_launch_description():
         DeclareLaunchArgument("virtual_joystick_url", default_value="https://github.io", description="URL for virtual joystick"),
         DeclareLaunchArgument("ui_launch_delay", default_value="2.0", description="Delay before launching UI"),
         DeclareLaunchArgument("zoom_camera_delay", default_value="2.0", description="Delay for zoom camera"),
+        DeclareLaunchArgument("max_speed", default_value="1.0", description="Maximum velocity command in m/s"),
+        DeclareLaunchArgument("command_timeout", default_value="0.5", description="Velocity command timeout in seconds"),
 
         OpaqueFunction(function=launch_setup)
     ])

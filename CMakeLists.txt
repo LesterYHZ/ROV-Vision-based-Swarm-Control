@@ -18,6 +18,7 @@ install(
     scripts/keyboard_publisher.py
     scripts/ws_to_joy.py
     scripts/rov_tag_detector.py
+    scripts/bluerov_velocity_controller.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

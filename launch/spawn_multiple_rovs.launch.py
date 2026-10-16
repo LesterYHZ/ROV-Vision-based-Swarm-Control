@@ -12,6 +12,8 @@ def launch_setup(context, *args, **kwargs):
     start_x_str = LaunchConfiguration('start_x').perform(context)
     start_y_str = LaunchConfiguration('start_y').perform(context)
     base_z_str = LaunchConfiguration('base_z').perform(context)
+    max_speed = float(LaunchConfiguration("max_speed").perform(context))
+    command_timeout = float(LaunchConfiguration("command_timeout").perform(context))
     
     try:
         num_robots = int(num_robots_str)
@@ -70,9 +72,21 @@ def launch_setup(context, *args, **kwargs):
             "<topic>front_camera/image_raw</topic>",
             f"<topic>/model/{unique_robot_name}/front_camera/image_raw</topic>",
         )
-        
-        # 强行清洗最外层的 <model name="..."> 确保多车实体名在 Gazebo 中互不干扰 
-        car_sdf_content = car_sdf_content.replace('<model name="bluerov2_heavy_camera">', f'<model name="{unique_robot_name}">')
+
+        # The Heavy SDF contains model-scoped actuator topics. Rewrite both the
+        # Gazebo plugin namespaces and ArduPilot command topics per vehicle.
+        car_sdf_content = car_sdf_content.replace(
+            "<model name=\"bluerov2_heavy_camera\">",
+            f"<model name=\"{unique_robot_name}\">",
+        )
+        car_sdf_content = car_sdf_content.replace(
+            "<namespace>bluerov2_heavy_camera</namespace>",
+            f"<namespace>{unique_robot_name}</namespace>",
+        )
+        car_sdf_content = car_sdf_content.replace(
+            "/model/bluerov2_heavy_camera/",
+            f"/model/{unique_robot_name}/",
+        )
 
         # 存为系统级的临时隐藏专属模型文件
         tmp_dir = tempfile.gettempdir()
@@ -97,17 +111,28 @@ def launch_setup(context, *args, **kwargs):
         )
         launch_entities.append(spawn_node)
 
-        # 5. 【核心修复】：为当前车辆的图像桥接管道架设“延时等待动作”
+        # 5. Bridge the camera and all eight Heavy thruster command topics.
         # The SDF gives each camera an explicit model-scoped Gazebo topic.
         gz_absolute_topic = f"/model/{unique_robot_name}/front_camera/image_raw"
         ros_absolute_topic = f"/model/{unique_robot_name}/image_raw"
 
-        bridge_argument = f"{gz_absolute_topic}@sensor_msgs/msg/Image[gz.msgs.Image"
+        bridge_arguments = [
+            f"{gz_absolute_topic}@sensor_msgs/msg/Image[gz.msgs.Image",
+            (
+                f"/model/{unique_robot_name}/odometry@"
+                "nav_msgs/msg/Odometry[gz.msgs.Odometry"
+            ),
+        ]
+        bridge_arguments.extend(
+            f"/model/{unique_robot_name}/joint/thruster{i}_joint/cmd_thrust"
+            "@std_msgs/msg/Float64@gz.msgs.Double"
+            for i in range(1, 9)
+        )
 
         camera_bridge_node = Node(
             package='ros_gz_bridge',
             executable='parameter_bridge',
-            arguments=[bridge_argument],
+            arguments=bridge_arguments,
             remappings=[
                 (gz_absolute_topic, ros_absolute_topic)
             ],
@@ -115,7 +140,7 @@ def launch_setup(context, *args, **kwargs):
             output='screen'
         )
 
-        # 【核心修复机制】：强行让桥接节点在 create 节点提交模型 3.0 秒之后再行点火启动
+        # Start the bridge after the model has been inserted into Gazebo.
         # 这确保了当桥接器去 Gazebo Transport 拓扑网络中握手时，多辆潜水器的相机硬件早已全部在水下初始化并上线完毕！
         delayed_bridge = TimerAction(
             period=3.0,
@@ -123,6 +148,20 @@ def launch_setup(context, *args, **kwargs):
         )
         
         launch_entities.append(delayed_bridge)
+
+        velocity_controller_node = Node(
+            package="dave_robot_models",
+            executable="bluerov_velocity_controller.py",
+            name=f"{unique_robot_name}_velocity_controller",
+            output="screen",
+            parameters=[{
+                "input_topic": f"/model/{unique_robot_name}/motion_vector",
+                "odometry_topic": f"/model/{unique_robot_name}/odometry",
+                "max_speed": max_speed,
+                "command_timeout": command_timeout,
+            }],
+        )
+        launch_entities.append(velocity_controller_node)
 
     return launch_entities
 
@@ -133,6 +172,8 @@ def generate_launch_description():
         DeclareLaunchArgument("start_x", default_value="0.0", description="第一辆车的初始 X 坐标"),
         DeclareLaunchArgument("start_y", default_value="0.0", description="第一辆车的初始 Y 坐标"),
         DeclareLaunchArgument("base_z", default_value="-2.0", description="所有潜水器的统一下潜深度"),
+        DeclareLaunchArgument("max_speed", default_value="1.0", description="Maximum velocity command in m/s"),
+        DeclareLaunchArgument("command_timeout", default_value="0.5", description="Velocity command timeout in seconds"),
 
         OpaqueFunction(function=launch_setup)
     ])

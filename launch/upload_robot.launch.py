@@ -23,6 +23,7 @@ def generate_launch_description():
     pitch = LaunchConfiguration("pitch")
     yaw = LaunchConfiguration("yaw")
     use_ned_frame = LaunchConfiguration("use_ned_frame")
+    use_ardusub = LaunchConfiguration("use_ardusub")
     use_teleop = LaunchConfiguration("use_teleop")
     use_web_joystick = LaunchConfiguration("use_web_joystick")
     joystick_ws_host = LaunchConfiguration("joystick_ws_host")
@@ -41,6 +42,11 @@ def generate_launch_description():
             "gui",
             default_value="true",
             description="Flag to indicate whether to use simulation",
+        ),
+        DeclareLaunchArgument(
+            "use_ardusub",
+            default_value="false",
+            description="Launch ArduSub SITL and MAVROS",
         ),
         DeclareLaunchArgument(
             "use_sim_time",
@@ -221,6 +227,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             "namespace": namespace,
+            "use_ardusub": use_ardusub,
             "use_teleop": use_teleop,
             "use_web_joystick": use_web_joystick,
             "joystick_ws_host": joystick_ws_host,
