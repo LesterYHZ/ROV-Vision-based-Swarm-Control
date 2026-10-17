@@ -19,10 +19,10 @@ class BlueROVVelocityController(Node):
         self.declare_parameter("max_speed", 2.0)
         self.declare_parameter("command_timeout", 0.5)
         self.declare_parameter("publish_rate", 10.0)
-        self.declare_parameter("surge_gain", 1.0)
-        self.declare_parameter("sway_gain", 1.0)
-        self.declare_parameter("heave_gain", 1.0)
-        self.declare_parameter("yaw_gain", 0.5)
+        self.declare_parameter("surge_gain", 10.0)
+        self.declare_parameter("sway_gain", 0.0)
+        self.declare_parameter("heave_gain", 10.0)
+        self.declare_parameter("yaw_gain", 10.0)
         self.declare_parameter("max_yaw_rate", 1.0)
         self.declare_parameter("max_thruster_command", 1.0)
 
@@ -76,6 +76,7 @@ class BlueROVVelocityController(Node):
         ]
         self.last_command = (0.0, 0.0, 0.0, 0.0)
         self.last_command_time = self.get_clock().now()
+        self.have_command = False
         self.current_body_velocity = (0.0, 0.0, 0.0)
         self.current_yaw_rate = 0.0
         self.current_yaw = 0.0
@@ -119,6 +120,7 @@ class BlueROVVelocityController(Node):
 
         self.last_command = (u, v, w, yaw_rate)
         self.last_command_time = self.get_clock().now()
+        self.have_command = True
 
     def _on_odometry(self, message):
         q = message.pose.pose.orientation
@@ -146,15 +148,15 @@ class BlueROVVelocityController(Node):
             self._publish_thrusters([0.0] * 8)
             return
 
-        u, v, w, yaw_rate = (
-            self.last_command
-            if age <= self.command_timeout
-            else (0.0, 0.0, 0.0, 0.0)
-        )
-        surge = self.surge_gain * (u - self.current_body_velocity[0])
-        sway = self.sway_gain * (v - self.current_body_velocity[1])
-        heave = self.heave_gain * (w - self.current_body_velocity[2])
-        yaw = self.yaw_gain * (yaw_rate - self.current_yaw_rate)
+        if not self.have_command or age > self.command_timeout:
+            self._publish_thrusters([0.0] * 8)
+            return
+
+        u, v, w, yaw_rate = self.last_command
+        surge = - self.surge_gain * (u - self.current_body_velocity[0])
+        sway = - self.sway_gain * (v - self.current_body_velocity[1])
+        heave = - self.heave_gain * (w - self.current_body_velocity[2])
+        yaw = - self.yaw_gain * (yaw_rate - self.current_yaw_rate)
 
         scale = max(self.max_speed, 1e-6)
         surge = max(-1.0, min(1.0, surge / scale))
@@ -167,12 +169,12 @@ class BlueROVVelocityController(Node):
         # surge/heave command from becoming a yaw or roll moment.
         commands = [
             surge + sway + yaw,
-            surge - sway - yaw,
-            -surge - sway + yaw,
+            surge + sway - yaw,
+            -surge + sway + yaw,
             -surge + sway - yaw,
             heave,
-            -heave,
-            -heave,
+            heave,
+            heave,
             heave,
         ]
         peak = max(1.0, max(abs(command) for command in commands))

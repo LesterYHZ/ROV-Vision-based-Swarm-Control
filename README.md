@@ -19,14 +19,17 @@ on `/motion_vector`. The command is interpreted in the ROV body frame:
 - `linear.x`: `u`, forward velocity in metres per second
 - `linear.y`: `v`, lateral velocity in metres per second
 - `linear.z`: `w`, vertical velocity in metres per second
-- `angular.z`: yaw rate `r` in radians per second
+- `angular.z`: `r`, yaw rate in radians per second
 
 It uses Gazebo odometry feedback to calculate body-frame velocity error and
 yaw-rate error, then directly publishes normalized
 `std_msgs/msg/Float64` commands to the eight thruster topics. The command
-magnitude is limited by `max_speed`, and a stale command becomes zero thrust
+magnitude is limited by `max_speed`, and a stale command causes zero thrust
 after `command_timeout` seconds. The controller does not require ArduSub or
 MAVROS.
+
+Before the first command, and after a command times out, the controller
+publishes zero thrust rather than trying to brake residual startup motion.
 
 The Heavy model reverses the thrust coefficients of thrusters 3, 4, 6, and 7.
 The controller compensates for those signs. Its normalized horizontal command

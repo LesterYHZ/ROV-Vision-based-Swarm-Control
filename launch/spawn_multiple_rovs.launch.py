@@ -125,7 +125,7 @@ def launch_setup(context, *args, **kwargs):
         ]
         bridge_arguments.extend(
             f"/model/{unique_robot_name}/joint/thruster{i}_joint/cmd_thrust"
-            "@std_msgs/msg/Float64@gz.msgs.Double"
+            "@std_msgs/msg/Float64]gz.msgs.Double"
             for i in range(1, 9)
         )
 
