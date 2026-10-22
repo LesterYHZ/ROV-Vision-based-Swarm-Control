@@ -19,12 +19,27 @@ targets. By default, publish to `/model/<robot_name>/reference_pose` with
 metres. Orientation is a quaternion describing the vehicle FRD body attitude
 in the NED world frame (equivalent to Fossen roll, pitch, and yaw).
 
+In Fossen notation, the controller tracks
+`eta = [x, y, z, roll, pitch, yaw]` and uses body velocities
+`nu = [u, v, w, p, q, r]`. The outer pose loop generates `nu` references;
+the inner loop then allocates all six control efforts to the Heavy thrusters.
+
 The controller converts Gazebo ENU/FLU odometry into NED/FRD, uses an outer
 pose loop and inner body velocity/rate loops, and allocates surge, sway,
-heave, roll, pitch, and yaw effort across the eight Heavy thrusters. It
-publishes zero thrust until a target arrives; if targets become stale, it
-captures and holds the current pose. With the default 0.5 second timeout,
-keep publishing the target at a higher rate while it is being tracked. For
+heave, roll, pitch, and yaw effort across the eight Heavy thrusters.
+Conservative simulation starting gains are provided per axis: position gains
+are ordered north/east/down, attitude gains roll/pitch/yaw, and velocity and
+integral gains surge/sway/heave/roll/pitch/yaw. The default speed and angular
+rate limits are 1.0 m/s and 0.5 rad/s. These defaults are starting points for
+the Heavy simulation model, not hardware-validated gains.
+
+The controller publishes zero thrust until a target arrives; if targets
+become stale, it captures and holds the current pose. Its integrator is frozen
+when the combined thruster allocation saturates. With the default 0.5 second
+timeout, keep publishing the target at a higher rate while it is being
+tracked. Tune in simulation with isolated small steps on all six axes, followed
+by coupled translation and attitude steps; check command direction, settling,
+overshoot, and thruster saturation before using the gains on hardware. For
 example, this requests a pose 1 metre north and 2 metres down, with zero
 Fossen roll, pitch, and yaw:
 

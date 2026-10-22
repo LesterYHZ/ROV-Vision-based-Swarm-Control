@@ -38,6 +38,11 @@ def generate_launch_description():
                 default_value="0.5",
                 description="Seconds before a stale pose target captures the current pose",
             ),
+            DeclareLaunchArgument(
+                "max_angular_rate",
+                default_value="0.5",
+                description="Maximum commanded body angular rate in radians per second",
+            ),
             Node(
                 package="dave_robot_models",
                 executable="bluerov_velocity_controller.py",
@@ -48,6 +53,7 @@ def generate_launch_description():
                         "reference_pose_topic": LaunchConfiguration("reference_pose_topic"),
                         "odometry_topic": LaunchConfiguration("odometry_topic"),
                         "max_speed": LaunchConfiguration("max_speed"),
+                        "max_angular_rate": LaunchConfiguration("max_angular_rate"),
                         "command_timeout": LaunchConfiguration("command_timeout"),
                     }
                 ],

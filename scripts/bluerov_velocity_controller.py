@@ -12,6 +12,8 @@ from std_msgs.msg import Float64
 # arms in the Heavy SDF (|x| + |y|, with 45-degree thrust axes).
 REAR_SWAY_RATIO = (0.14 + 0.092) / (0.15 + 0.092)
 WORLD_ENU_TO_NED = (math.sqrt(0.5), math.sqrt(0.5), 0.0, 0.0)
+# FLU (forward-left-up) to FRD (forward-right-down) is a 180-degree
+# rotation about the forward axis.
 BODY_FLU_TO_FRD = (1.0, 0.0, 0.0, 0.0)
 
 
@@ -95,7 +97,13 @@ def mix_thruster_commands(surge, sway, heave, roll, pitch, yaw):
 
 
 class BlueROVMotionController(Node):
-    """Track absolute six-axis NED pose targets for a BlueROV2 Heavy."""
+    """Track Fossen eta=[x,y,z,phi,theta,psi] pose targets.
+
+    The reference and measured pose are expressed in NED/FRD. The controller
+    uses the Fossen kinematic structure: an outer pose loop generates body
+    velocity/rate references nu=[u,v,w,p,q,r], followed by six-axis feedback
+    and thruster allocation.
+    """
 
     def __init__(self):
         super().__init__("bluerov_motion_controller")
@@ -104,15 +112,23 @@ class BlueROVMotionController(Node):
             "reference_pose_topic", "/model/bluerov2_heavy_camera/reference_pose"
         )
         self.declare_parameter("odometry_topic", "/model/bluerov2_heavy_camera/odometry")
-        self.declare_parameter("max_speed", 10.0)
-        self.declare_parameter("max_angular_rate", 2.0)
+        self.declare_parameter("max_speed", 3.0)
+        self.declare_parameter("max_angular_rate", 1.0)
         self.declare_parameter("command_timeout", 0.5)
         self.declare_parameter("publish_rate", 10.0)
-        self.declare_parameter("position_gains", [0.8, 0.8, 0.8])
-        self.declare_parameter("attitude_gains", [1.0, 1.0, 1.0])
-        self.declare_parameter("velocity_gains", [1.0] * 6)
-        self.declare_parameter("velocity_integral_gains", [0.05] * 6)
-        self.declare_parameter("integral_limits", [1.0] * 6)
+        # Conservative Heavy simulation starting gains. Ordering is
+        # [north/east/down] and [surge/sway/heave/roll/pitch/yaw].
+        self.declare_parameter("position_gains", [0.5, 0.5, 0.35])
+        self.declare_parameter("attitude_gains", [0.5, 0.5, 0.4])
+        self.declare_parameter(
+            "velocity_gains", [0.2, 0.2, 0.12, 0.1, 0.1, 0.08]
+        )
+        self.declare_parameter(
+            "velocity_integral_gains", [0.02, 0.02, 0.015, 0.01, 0.01, 0.008]
+        )
+        self.declare_parameter(
+            "integral_limits", [0.5, 0.5, 0.4, 0.3, 0.3, 0.25]
+        )
         self.declare_parameter("max_thruster_command", 10.0)
 
         self.reference_pose_topic = self.get_parameter("reference_pose_topic").value
@@ -304,6 +320,7 @@ class BlueROVMotionController(Node):
 
         reference = velocity_reference_body + angular_rate_reference
         errors = tuple(reference[i] - self.current_velocity[i] for i in range(6))
+        old_integrals = self.integrals[:]
         efforts = []
         for i, error in enumerate(errors):
             self.integrals[i] += error * dt
@@ -319,9 +336,29 @@ class BlueROVMotionController(Node):
 
         commands = mix_thruster_commands(*efforts)
         peak = max(1.0, max(abs(command) for command in commands))
+        if peak > 1.0:
+            # Allocation scales all thrusters together. Freeze the integrator
+            # while saturated, then use the pre-step integral state so it
+            # cannot wind up against an unreachable wrench.
+            self.integrals = old_integrals
+            efforts = [
+                max(
+                    -1.0,
+                    min(
+                        1.0,
+                        self.velocity_gains[i] * errors[i]
+                        + self.velocity_integral_gains[i] * self.integrals[i],
+                    ),
+                )
+                for i in range(6)
+            ]
+            commands = mix_thruster_commands(*efforts)
+            peak = max(1.0, max(abs(command) for command in commands))
         self._publish_thrusters(
             [command / peak * self.max_thruster_command for command in commands]
         )
+        # log the final commands for debugging purposes
+        self.get_logger().info(f"Published thruster commands: {commands}")
 
     @staticmethod
     def _limit_vector(vector, maximum):

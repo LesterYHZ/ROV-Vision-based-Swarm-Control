@@ -12,7 +12,8 @@ from bluerov_velocity_controller import (
 
 class ThrusterMixerTest(unittest.TestCase):
     # Effective force directions in body FRD after applying the joint axes,
-    # SDF poses, and the reversed thrust coefficients on thrusters 3 and 4.
+    # SDF poses, and the reversed thrust coefficients on thrusters 3, 4, 6,
+    # and 7.
     FORCE_DIRECTIONS = (
         (-1.0, 1.0),
         (-1.0, -1.0),
