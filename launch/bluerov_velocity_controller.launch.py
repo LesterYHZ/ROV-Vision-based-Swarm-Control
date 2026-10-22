@@ -5,12 +5,23 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    model_name = "bluerov2_heavy_camera"
+    thruster_bridge = Node(
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
+        arguments=[
+            f"/model/{model_name}/joint/thruster{i}_joint/cmd_thrust"
+            "@std_msgs/msg/Float64]gz.msgs.Double"
+            for i in range(1, 9)
+        ],
+        output="screen",
+    )
     return LaunchDescription(
         [
             DeclareLaunchArgument(
-                "input_topic",
-                default_value="/motion_vector",
-                description="Body-frame Twist command topic (u, v, w, r)",
+                "reference_pose_topic",
+                default_value="/model/bluerov2_heavy_camera/reference_pose",
+                description="NED PoseStamped target topic",
             ),
             DeclareLaunchArgument(
                 "odometry_topic",
@@ -25,21 +36,22 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "command_timeout",
                 default_value="0.5",
-                description="Seconds before a stale command becomes zero velocity",
+                description="Seconds before a stale pose target captures the current pose",
             ),
             Node(
                 package="dave_robot_models",
                 executable="bluerov_velocity_controller.py",
-                name="bluerov_velocity_controller",
+                name="bluerov_motion_controller",
                 output="screen",
                 parameters=[
                     {
-                        "input_topic": LaunchConfiguration("input_topic"),
+                        "reference_pose_topic": LaunchConfiguration("reference_pose_topic"),
                         "odometry_topic": LaunchConfiguration("odometry_topic"),
                         "max_speed": LaunchConfiguration("max_speed"),
                         "command_timeout": LaunchConfiguration("command_timeout"),
                     }
                 ],
             ),
+            thruster_bridge,
         ]
     )

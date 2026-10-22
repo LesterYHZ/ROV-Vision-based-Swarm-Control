@@ -41,7 +41,7 @@ def launch_setup(context, *args, **kwargs):
         unique_robot_name = f"bluerov_{i}"
         
         # 动态错开摆放位置，避免它们重叠产生剧烈的物理碰撞
-        x_pos = str(start_x - (i * 2.0))
+        x_pos = str(start_x - (i * 1.0))
         y_pos = str(start_y + (i * 0.5)) 
         z_pos = str(base_z)
 
@@ -152,10 +152,10 @@ def launch_setup(context, *args, **kwargs):
         velocity_controller_node = Node(
             package="dave_robot_models",
             executable="bluerov_velocity_controller.py",
-            name=f"{unique_robot_name}_velocity_controller",
+            name=f"{unique_robot_name}_motion_controller",
             output="screen",
             parameters=[{
-                "input_topic": f"/model/{unique_robot_name}/motion_vector",
+                "reference_pose_topic": f"/model/{unique_robot_name}/reference_pose",
                 "odometry_topic": f"/model/{unique_robot_name}/odometry",
                 "max_speed": max_speed,
                 "command_timeout": command_timeout,
@@ -173,7 +173,7 @@ def generate_launch_description():
         DeclareLaunchArgument("start_y", default_value="0.0", description="第一辆车的初始 Y 坐标"),
         DeclareLaunchArgument("base_z", default_value="-2.0", description="所有潜水器的统一下潜深度"),
         DeclareLaunchArgument("max_speed", default_value="1.0", description="Maximum velocity command in m/s"),
-        DeclareLaunchArgument("command_timeout", default_value="0.5", description="Velocity command timeout in seconds"),
+        DeclareLaunchArgument("command_timeout", default_value="0.5", description="Seconds before a stale pose target captures the current pose"),
 
         OpaqueFunction(function=launch_setup)
     ])

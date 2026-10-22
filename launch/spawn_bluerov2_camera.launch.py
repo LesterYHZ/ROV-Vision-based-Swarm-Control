@@ -145,10 +145,11 @@ def launch_setup(context, *args, **kwargs):
     velocity_controller_node = Node(
         package="dave_robot_models",
         executable="bluerov_velocity_controller.py",
-        name=f"{namespace}_velocity_controller",
+        name=f"{namespace}_motion_controller",
         output="screen",
         parameters=[{
-            "input_topic": f"/model/{namespace}/motion_vector",
+            "reference_pose_topic": f"/model/{namespace}/reference_pose",
+            "odometry_topic": f"/model/{namespace}/odometry",
             "mavros_namespace": "mavros",
             "max_speed": max_speed,
             "command_timeout": command_timeout,
@@ -190,7 +191,7 @@ def generate_launch_description():
         DeclareLaunchArgument("ui_launch_delay", default_value="2.0", description="Delay before launching UI"),
         DeclareLaunchArgument("zoom_camera_delay", default_value="2.0", description="Delay for zoom camera"),
         DeclareLaunchArgument("max_speed", default_value="1.0", description="Maximum velocity command in m/s"),
-        DeclareLaunchArgument("command_timeout", default_value="0.5", description="Velocity command timeout in seconds"),
+        DeclareLaunchArgument("command_timeout", default_value="0.5", description="Seconds before a stale pose target captures the current pose"),
 
         OpaqueFunction(function=launch_setup)
     ])

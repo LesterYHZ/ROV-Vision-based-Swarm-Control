@@ -11,35 +11,26 @@ The message header identifies the camera optical frame and each entry contains:
 - `id`: the AprilTag ID
 - `pose`: the tag pose relative to the camera, with translation in metres
 
-## BlueROV independent velocity controller
+## BlueROV2 Heavy six-axis pose controller
 
-The `bluerov_velocity_controller` node accepts a `geometry_msgs/msg/Twist`
-on `/motion_vector`. The command is interpreted in the ROV body frame:
+The `bluerov_velocity_controller` executable tracks absolute `geometry_msgs/msg/PoseStamped`
+targets. By default, publish to `/model/<robot_name>/reference_pose` with
+`header.frame_id: ned`. Position is expressed as north, east, and down in
+metres. Orientation is a quaternion describing the vehicle FRD body attitude
+in the NED world frame (equivalent to Fossen roll, pitch, and yaw).
 
-- `linear.x`: `u`, forward velocity in metres per second
-- `linear.y`: `v`, lateral velocity in metres per second
-- `linear.z`: `w`, vertical velocity in metres per second
-- `angular.z`: `r`, yaw rate in radians per second
+The controller converts Gazebo ENU/FLU odometry into NED/FRD, uses an outer
+pose loop and inner body velocity/rate loops, and allocates surge, sway,
+heave, roll, pitch, and yaw effort across the eight Heavy thrusters. It
+publishes zero thrust until a target arrives; if targets become stale, it
+captures and holds the current pose. With the default 0.5 second timeout,
+keep publishing the target at a higher rate while it is being tracked. For
+example, this requests a pose 1 metre north and 2 metres down, with zero
+Fossen roll, pitch, and yaw:
 
-It uses Gazebo odometry feedback to calculate body-frame velocity error and
-yaw-rate error, then directly publishes normalized
-`std_msgs/msg/Float64` commands to the eight thruster topics. The command
-magnitude is limited by `max_speed`, and a stale command causes zero thrust
-after `command_timeout` seconds. The controller does not require ArduSub or
-MAVROS.
-
-Before the first command, and after a command times out, the controller
-publishes zero thrust rather than trying to brake residual startup motion.
-
-The Heavy model reverses the thrust coefficients of thrusters 3, 4, 6, and 7.
-The controller compensates for those signs. Its normalized horizontal command
-patterns are:
-
-```text
-surge: [+u, +u, -u, -u]
-sway:  [+v, -v, -v, +v]
-yaw:   [+r, -r, +r, -r]
-heave: [+w, -w, -w, +w]  (thrusters 5-8)
+```bash
+ros2 topic pub -r 10 /model/bluerov_0/reference_pose geometry_msgs/msg/PoseStamped \
+  "{header: {frame_id: ned}, pose: {position: {x: 1.0, y: 0.0, z: 2.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
 ```
 
 Run it with:
@@ -52,8 +43,8 @@ The single- and multi-ROV spawn launches start one isolated controller per
 vehicle. For example:
 
 ```text
-/model/bluerov_0/motion_vector (geometry_msgs/msg/Twist)
+/model/bluerov_0/reference_pose (geometry_msgs/msg/PoseStamped)
 /model/bluerov_0/odometry
-/model/bluerov_1/motion_vector
+/model/bluerov_1/reference_pose
 /model/bluerov_1/odometry
 ```
