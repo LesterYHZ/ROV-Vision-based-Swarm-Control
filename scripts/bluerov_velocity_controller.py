@@ -85,14 +85,14 @@ def quaternion_error_vector(target, current):
 def mix_thruster_commands(surge, sway, heave, roll, pitch, yaw):
     """Allocate a body FRD wrench across the eight Heavy thrusters."""
     return [
-        -surge + sway + yaw,
-        -surge - sway - yaw,
-        -surge - REAR_SWAY_RATIO * sway + yaw,
-        -surge + REAR_SWAY_RATIO * sway - yaw,
-        heave + roll - pitch,
-        -heave + roll + pitch,
-        -heave - roll - pitch,
-        heave - roll + pitch,
+        -surge - sway + yaw,
+        -surge + sway - yaw,
+        +surge + sway - yaw,
+        +surge - sway + yaw,
+        heave ,
+        heave ,
+        heave ,
+        heave ,
     ]
 
 
@@ -118,8 +118,8 @@ class BlueROVMotionController(Node):
         self.declare_parameter("publish_rate", 10.0)
         # Conservative Heavy simulation starting gains. Ordering is
         # [north/east/down] and [surge/sway/heave/roll/pitch/yaw].
-        self.declare_parameter("position_gains", [0.5, 0.5, 0.35])
-        self.declare_parameter("attitude_gains", [0.5, 0.5, 0.4])
+        self.declare_parameter("position_gains", [5.0, 5.0, 5.0])
+        self.declare_parameter("attitude_gains", [0.5, 0.5, 10.0])
         self.declare_parameter(
             "velocity_gains", [0.2, 0.2, 0.12, 0.1, 0.1, 0.08]
         )
@@ -129,7 +129,7 @@ class BlueROVMotionController(Node):
         self.declare_parameter(
             "integral_limits", [0.5, 0.5, 0.4, 0.3, 0.3, 0.25]
         )
-        self.declare_parameter("max_thruster_command", 10.0)
+        self.declare_parameter("max_thruster_command", 100.0)
 
         self.reference_pose_topic = self.get_parameter("reference_pose_topic").value
         self.odometry_topic = self.get_parameter("odometry_topic").value
