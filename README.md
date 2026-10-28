@@ -13,11 +13,20 @@ The message header identifies the camera optical frame and each entry contains:
 
 ## BlueROV2 Heavy six-axis pose controller
 
-The `bluerov_velocity_controller` executable tracks absolute `geometry_msgs/msg/PoseStamped`
-targets. By default, publish to `/model/<robot_name>/reference_pose` with
-`header.frame_id: ned`. Position is expressed as north, east, and down in
-metres. Orientation is a quaternion describing the vehicle FRD body attitude
-in the NED world frame (equivalent to Fossen roll, pitch, and yaw).
+The `bluerov_velocity_controller` executable supports two control modes:
+
+- Position mode uses absolute `geometry_msgs/msg/PoseStamped` targets on
+  `/model/<robot_name>/reference_pose` with `header.frame_id: ned`. Position is
+  expressed as north, east, and down in metres. Orientation is a quaternion
+  describing the vehicle FRD body attitude in the NED world frame.
+- Velocity mode uses `geometry_msgs/msg/TwistStamped` targets on
+  `/model/<robot_name>/reference_velocity` with `header.frame_id: frd`.
+  Linear velocity is surge, sway, and heave; angular velocity is roll, pitch,
+  and yaw rate. All six values are expressed in the body FRD frame.
+
+The most recently received valid target selects the mode. If velocity targets
+become stale, the controller commands zero velocity. If position targets
+become stale, it captures and holds the current pose.
 
 In Fossen notation, the controller tracks
 `eta = [x, y, z, roll, pitch, yaw]` and uses body velocities
@@ -48,6 +57,14 @@ ros2 topic pub -r 10 /model/bluerov_0/reference_pose geometry_msgs/msg/PoseStamp
   "{header: {frame_id: ned}, pose: {position: {x: 1.0, y: 0.0, z: 2.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
 ```
 
+For body-FRD velocity control, for example 0.2 m/s forward and -0.1 rad/s
+yaw:
+
+```bash
+ros2 topic pub -r 10 /model/bluerov_0/reference_velocity geometry_msgs/msg/TwistStamped \
+  "{header: {frame_id: frd}, twist: {linear: {x: 0.2, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: -0.1}}}"
+```
+
 Run it with:
 
 ```bash
@@ -59,7 +76,9 @@ vehicle. For example:
 
 ```text
 /model/bluerov_0/reference_pose (geometry_msgs/msg/PoseStamped)
+/model/bluerov_0/reference_velocity (geometry_msgs/msg/TwistStamped)
 /model/bluerov_0/odometry
 /model/bluerov_1/reference_pose
+/model/bluerov_1/reference_velocity
 /model/bluerov_1/odometry
 ```

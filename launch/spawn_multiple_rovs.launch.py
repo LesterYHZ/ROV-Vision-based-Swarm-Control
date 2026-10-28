@@ -156,6 +156,7 @@ def launch_setup(context, *args, **kwargs):
             output="screen",
             parameters=[{
                 "reference_pose_topic": f"/model/{unique_robot_name}/reference_pose",
+                "reference_velocity_topic": f"/model/{unique_robot_name}/reference_velocity",
                 "odometry_topic": f"/model/{unique_robot_name}/odometry",
                 "max_speed": max_speed,
                 "command_timeout": command_timeout,

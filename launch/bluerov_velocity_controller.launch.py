@@ -24,6 +24,11 @@ def generate_launch_description():
                 description="NED PoseStamped target topic",
             ),
             DeclareLaunchArgument(
+                "reference_velocity_topic",
+                default_value="/model/bluerov2_heavy_camera/reference_velocity",
+                description="FRD TwistStamped target topic",
+            ),
+            DeclareLaunchArgument(
                 "odometry_topic",
                 default_value="/model/bluerov2_heavy_camera/odometry",
                 description="Gazebo odometry topic for the ROV",
@@ -51,6 +56,9 @@ def generate_launch_description():
                 parameters=[
                     {
                         "reference_pose_topic": LaunchConfiguration("reference_pose_topic"),
+                        "reference_velocity_topic": LaunchConfiguration(
+                            "reference_velocity_topic"
+                        ),
                         "odometry_topic": LaunchConfiguration("odometry_topic"),
                         "max_speed": LaunchConfiguration("max_speed"),
                         "max_angular_rate": LaunchConfiguration("max_angular_rate"),

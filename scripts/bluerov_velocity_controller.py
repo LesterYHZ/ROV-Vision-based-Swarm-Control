@@ -2,7 +2,7 @@
 import math
 
 import rclpy
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from std_msgs.msg import Float64
@@ -97,12 +97,12 @@ def mix_thruster_commands(surge, sway, heave, roll, pitch, yaw):
 
 
 class BlueROVMotionController(Node):
-    """Track Fossen eta=[x,y,z,phi,theta,psi] pose targets.
+    """Track Fossen pose targets or body velocity targets.
 
-    The reference and measured pose are expressed in NED/FRD. The controller
-    uses the Fossen kinematic structure: an outer pose loop generates body
-    velocity/rate references nu=[u,v,w,p,q,r], followed by six-axis feedback
-    and thruster allocation.
+    Pose references use NED/FRD, while velocity references use body FRD.
+    Position mode uses an outer pose loop to generate body velocity/rate
+    references nu=[u,v,w,p,q,r]. Both modes use six-axis feedback and
+    thruster allocation.
     """
 
     def __init__(self):
@@ -110,6 +110,10 @@ class BlueROVMotionController(Node):
 
         self.declare_parameter(
             "reference_pose_topic", "/model/bluerov2_heavy_camera/reference_pose"
+        )
+        self.declare_parameter(
+            "reference_velocity_topic",
+            "/model/bluerov2_heavy_camera/reference_velocity",
         )
         self.declare_parameter("odometry_topic", "/model/bluerov2_heavy_camera/odometry")
         self.declare_parameter("max_speed", 3.0)
@@ -132,6 +136,9 @@ class BlueROVMotionController(Node):
         self.declare_parameter("max_thruster_command", 100.0)
 
         self.reference_pose_topic = self.get_parameter("reference_pose_topic").value
+        self.reference_velocity_topic = self.get_parameter(
+            "reference_velocity_topic"
+        ).value
         self.odometry_topic = self.get_parameter("odometry_topic").value
         self.max_speed = float(self.get_parameter("max_speed").value)
         self.max_angular_rate = float(self.get_parameter("max_angular_rate").value)
@@ -164,6 +171,12 @@ class BlueROVMotionController(Node):
             self._on_reference_pose,
             10,
         )
+        self.velocity_subscription = self.create_subscription(
+            TwistStamped,
+            self.reference_velocity_topic,
+            self._on_reference_velocity,
+            10,
+        )
         self.odometry_subscription = self.create_subscription(
             Odometry,
             self.odometry_topic,
@@ -185,13 +198,17 @@ class BlueROVMotionController(Node):
         self.current_velocity = (0.0,) * 6
         self.reference_position = None
         self.reference_orientation = None
+        self.reference_velocity = None
+        self.control_mode = None
         self.reference_time = None
         self.integrals = [0.0] * 6
         self.last_control_time = self.get_clock().now()
         self.timer = self.create_timer(1.0 / publish_rate, self._control_step)
         self.get_logger().info(
-            "Six-axis pose controller started | "
+            "Six-axis pose/velocity controller started | "
             f"reference={self.reference_pose_topic} [PoseStamped, frame_id=ned], "
+            f"velocity_reference={self.reference_velocity_topic} "
+            "[TwistStamped, frame_id=frd], "
             f"odometry={self.odometry_topic}"
         )
 
@@ -234,6 +251,36 @@ class BlueROVMotionController(Node):
 
         self.reference_position = position
         self.reference_orientation = orientation
+        self.reference_velocity = None
+        self.control_mode = "position"
+        self.reference_time = self.get_clock().now()
+        self.integrals = [0.0] * 6
+
+    def _on_reference_velocity(self, message):
+        if message.header.frame_id != "frd":
+            self.get_logger().warning(
+                "Ignoring velocity target: header.frame_id must be exactly 'frd'"
+            )
+            return
+
+        linear = message.twist.linear
+        angular = message.twist.angular
+        velocity = (
+            float(linear.x),
+            float(linear.y),
+            float(linear.z),
+            float(angular.x),
+            float(angular.y),
+            float(angular.z),
+        )
+        if not all(math.isfinite(value) for value in velocity):
+            self.get_logger().warning(
+                "Ignoring velocity target with non-finite values"
+            )
+            return
+
+        self.reference_velocity = velocity
+        self.control_mode = "velocity"
         self.reference_time = self.get_clock().now()
         self.integrals = [0.0] * 6
 
@@ -260,7 +307,7 @@ class BlueROVMotionController(Node):
         )
 
     def _hold_current_pose(self):
-        if self.current_position is None or self.reference_position is None:
+        if self.current_position is None or self.current_orientation is None:
             return
         self.reference_position = self.current_position
         self.reference_orientation = self.current_orientation
@@ -270,13 +317,13 @@ class BlueROVMotionController(Node):
     def _control_step(self):
         # Do not actuate during startup. A spawned vehicle can have transient
         # odometry velocity, and no pose target means there is no control task.
-        if self.reference_position is None:
+        if self.control_mode is None:
             self._publish_thrusters([0.0] * 8)
             self.integrals = [0.0] * 6
             self.last_control_time = self.get_clock().now()
             return
 
-        if self.current_position is None or self.reference_position is None:
+        if self.current_position is None or self.current_orientation is None:
             self._publish_thrusters([0.0] * 8)
             return
 
@@ -284,41 +331,52 @@ class BlueROVMotionController(Node):
         if self.reference_time is not None:
             target_age = (now - self.reference_time).nanoseconds * 1e-9
             if target_age > self.command_timeout:
-                self._hold_current_pose()
+                if self.control_mode == "position":
+                    self._hold_current_pose()
+                else:
+                    self.reference_velocity = (0.0,) * 6
+                    self.reference_time = None
 
         dt = (now - self.last_control_time).nanoseconds * 1e-9
         self.last_control_time = now
         if dt <= 0.0 or dt > self.command_timeout:
             dt = 1.0 / self.publish_rate
 
-        position_error_ned = tuple(
-            self.reference_position[i] - self.current_position[i]
-            for i in range(3)
-        )
-        velocity_reference_ned = tuple(
-            self.position_gains[i] * position_error_ned[i] for i in range(3)
-        )
-        velocity_reference_ned = self._limit_vector(
-            velocity_reference_ned, self.max_speed
-        )
-        velocity_reference_body = quaternion_rotate(
-            quaternion_inverse(self.current_orientation), velocity_reference_ned
-        )
+        if self.control_mode == "position":
+            position_error_ned = tuple(
+                self.reference_position[i] - self.current_position[i]
+                for i in range(3)
+            )
+            velocity_reference_ned = tuple(
+                self.position_gains[i] * position_error_ned[i] for i in range(3)
+            )
+            velocity_reference_ned = self._limit_vector(
+                velocity_reference_ned, self.max_speed
+            )
+            velocity_reference_body = quaternion_rotate(
+                quaternion_inverse(self.current_orientation), velocity_reference_ned
+            )
 
-        attitude_error_ned = quaternion_error_vector(
-            self.reference_orientation, self.current_orientation
-        )
-        attitude_error_body = quaternion_rotate(
-            quaternion_inverse(self.current_orientation), attitude_error_ned
-        )
-        angular_rate_reference = tuple(
-            self.attitude_gains[i] * attitude_error_body[i] for i in range(3)
-        )
-        angular_rate_reference = self._limit_vector(
-            angular_rate_reference, self.max_angular_rate
-        )
-
-        reference = velocity_reference_body + angular_rate_reference
+            attitude_error_ned = quaternion_error_vector(
+                self.reference_orientation, self.current_orientation
+            )
+            attitude_error_body = quaternion_rotate(
+                quaternion_inverse(self.current_orientation), attitude_error_ned
+            )
+            angular_rate_reference = tuple(
+                self.attitude_gains[i] * attitude_error_body[i] for i in range(3)
+            )
+            angular_rate_reference = self._limit_vector(
+                angular_rate_reference, self.max_angular_rate
+            )
+            reference = velocity_reference_body + angular_rate_reference
+        else:
+            reference = (
+                self._limit_vector(self.reference_velocity[:3], self.max_speed)
+                + self._limit_vector(
+                    self.reference_velocity[3:], self.max_angular_rate
+                )
+            )
         errors = tuple(reference[i] - self.current_velocity[i] for i in range(6))
         old_integrals = self.integrals[:]
         efforts = []

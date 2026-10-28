@@ -149,6 +149,7 @@ def launch_setup(context, *args, **kwargs):
         output="screen",
         parameters=[{
             "reference_pose_topic": f"/model/{namespace}/reference_pose",
+            "reference_velocity_topic": f"/model/{namespace}/reference_velocity",
             "odometry_topic": f"/model/{namespace}/odometry",
             "mavros_namespace": "mavros",
             "max_speed": max_speed,
