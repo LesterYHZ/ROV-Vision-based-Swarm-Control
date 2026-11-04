@@ -67,6 +67,27 @@ def enu_flu_to_ned_frd(position_enu, orientation_enu_flu):
     return position_ned, orientation_ned_frd
 
 
+def ned_frd_to_enu_flu(position_ned, orientation_ned_frd):
+    """Convert an ArduPilot NED/FRD pose into a ROS ENU/FLU pose."""
+    north, east, down = position_ned
+    position_enu = (east, north, -down)
+    orientation_enu_flu = quaternion_normalize(
+        quaternion_multiply(
+            quaternion_multiply(
+                quaternion_inverse(WORLD_ENU_TO_NED),
+                orientation_ned_frd,
+            ),
+            quaternion_inverse(BODY_FLU_TO_FRD),
+        )
+    )
+    return position_enu, orientation_enu_flu
+
+
+def frd_to_flu(vector):
+    """Convert a body vector from ArduPilot FRD to ROS FLU coordinates."""
+    return (vector[0], -vector[1], -vector[2])
+
+
 def quaternion_error_vector(target, current):
     """Return the shortest target-current rotation vector in the world frame."""
     error = quaternion_normalize(
@@ -116,6 +137,8 @@ class BlueROVMotionController(Node):
             "/model/bluerov2_heavy_camera/reference_velocity",
         )
         self.declare_parameter("odometry_topic", "/model/bluerov2_heavy_camera/odometry")
+        self.declare_parameter("control_backend", "gazebo")
+        self.declare_parameter("mavros_namespace", "mavros")
         self.declare_parameter("max_speed", 3.0)
         self.declare_parameter("max_angular_rate", 1.0)
         self.declare_parameter("command_timeout", 0.5)
@@ -140,6 +163,10 @@ class BlueROVMotionController(Node):
             "reference_velocity_topic"
         ).value
         self.odometry_topic = self.get_parameter("odometry_topic").value
+        self.control_backend = str(self.get_parameter("control_backend").value).lower()
+        self.mavros_namespace = str(
+            self.get_parameter("mavros_namespace").value
+        ).strip("/")
         self.max_speed = float(self.get_parameter("max_speed").value)
         self.max_angular_rate = float(self.get_parameter("max_angular_rate").value)
         self.command_timeout = float(self.get_parameter("command_timeout").value)
@@ -156,6 +183,10 @@ class BlueROVMotionController(Node):
             self.get_parameter("max_thruster_command").value
         )
 
+        if self.control_backend not in ("gazebo", "mavros"):
+            raise ValueError("control_backend must be 'gazebo' or 'mavros'")
+        if not self.mavros_namespace:
+            raise ValueError("mavros_namespace must not be empty")
         if self.max_speed <= 0.0 or self.max_angular_rate <= 0.0:
             raise ValueError("max_speed and max_angular_rate must be positive")
         if self.command_timeout <= 0.0 or publish_rate <= 0.0:
@@ -183,15 +214,31 @@ class BlueROVMotionController(Node):
             self._on_odometry,
             10,
         )
-        model_name = self._model_name_from_odometry()
-        self.thruster_publishers = [
-            self.create_publisher(
-                Float64,
-                f"/model/{model_name}/joint/thruster{i}_joint/cmd_thrust",
+        self.thruster_publishers = []
+        self.mavros_pose_publisher = None
+        self.mavros_velocity_publisher = None
+        if self.control_backend == "gazebo":
+            model_name = self._model_name_from_odometry()
+            self.thruster_publishers = [
+                self.create_publisher(
+                    Float64,
+                    f"/model/{model_name}/joint/thruster{i}_joint/cmd_thrust",
+                    10,
+                )
+                for i in range(1, 9)
+            ]
+        else:
+            mavros_prefix = f"/{self.mavros_namespace}"
+            self.mavros_pose_publisher = self.create_publisher(
+                PoseStamped,
+                f"{mavros_prefix}/setpoint_position/local",
                 10,
             )
-            for i in range(1, 9)
-        ]
+            self.mavros_velocity_publisher = self.create_publisher(
+                TwistStamped,
+                f"{mavros_prefix}/setpoint_velocity/cmd_vel",
+                10,
+            )
 
         self.current_position = None
         self.current_orientation = None
@@ -209,7 +256,7 @@ class BlueROVMotionController(Node):
             f"reference={self.reference_pose_topic} [PoseStamped, frame_id=ned], "
             f"velocity_reference={self.reference_velocity_topic} "
             "[TwistStamped, frame_id=frd], "
-            f"odometry={self.odometry_topic}"
+            f"odometry={self.odometry_topic}, backend={self.control_backend}"
         )
 
     def _get_gain_vector(self, parameter_name, length):
@@ -315,6 +362,10 @@ class BlueROVMotionController(Node):
         self.integrals = [0.0] * 6
 
     def _control_step(self):
+        if self.control_backend == "mavros":
+            self._control_step_mavros()
+            return
+
         # Do not actuate during startup. A spawned vehicle can have transient
         # odometry velocity, and no pose target means there is no control task.
         if self.control_mode is None:
@@ -417,6 +468,56 @@ class BlueROVMotionController(Node):
         )
         # log the final commands for debugging purposes
         self.get_logger().info(f"Published thruster commands: {commands}")
+
+    def _control_step_mavros(self):
+        """Stream NED/FRD references to MAVROS for ArduSub to track."""
+        if self.control_mode is None:
+            return
+
+        now = self.get_clock().now()
+        if self.reference_time is not None:
+            target_age = (now - self.reference_time).nanoseconds * 1e-9
+            if target_age > self.command_timeout:
+                if self.control_mode == "velocity":
+                    self.reference_velocity = (0.0,) * 6
+                self.reference_time = None
+
+        if self.control_mode == "position":
+            position, orientation = ned_frd_to_enu_flu(
+                self.reference_position,
+                self.reference_orientation,
+            )
+            message = PoseStamped()
+            message.header.stamp = now.to_msg()
+            message.header.frame_id = "map"
+            message.pose.position.x = position[0]
+            message.pose.position.y = position[1]
+            message.pose.position.z = position[2]
+            (
+                message.pose.orientation.x,
+                message.pose.orientation.y,
+                message.pose.orientation.z,
+                message.pose.orientation.w,
+            ) = orientation
+            self.mavros_pose_publisher.publish(message)
+            return
+
+        velocity = frd_to_flu(
+            self._limit_vector(self.reference_velocity[:3], self.max_speed)
+        )
+        angular_rate = frd_to_flu(
+            self._limit_vector(self.reference_velocity[3:], self.max_angular_rate)
+        )
+        message = TwistStamped()
+        message.header.stamp = now.to_msg()
+        message.header.frame_id = "base_link"
+        message.twist.linear.x = velocity[0]
+        message.twist.linear.y = velocity[1]
+        message.twist.linear.z = velocity[2]
+        message.twist.angular.x = angular_rate[0]
+        message.twist.angular.y = angular_rate[1]
+        message.twist.angular.z = angular_rate[2]
+        self.mavros_velocity_publisher.publish(message)
 
     @staticmethod
     def _limit_vector(vector, maximum):

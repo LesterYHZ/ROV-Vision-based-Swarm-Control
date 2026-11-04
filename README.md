@@ -82,3 +82,39 @@ vehicle. For example:
 /model/bluerov_1/reference_velocity
 /model/bluerov_1/odometry
 ```
+
+The controller also supports an ArduSub/MAVROS backend. Set
+`control_backend:=mavros` and keep `use_velocity_controller:=true` to stream
+the same NED pose and FRD body-velocity references to ArduSub instead of
+publishing Gazebo thruster commands:
+
+```bash
+ros2 launch dave_robot_models spawn_multiple_rovs.launch.py \
+  num_robots:=2 use_ardusub:=true \
+  use_velocity_controller:=true control_backend:=mavros
+```
+
+In this mode, pose references are published to
+`/bluerov_N/mavros/setpoint_position/local` after conversion to MAVROS ENU/FLU
+coordinates. Velocity references are published to
+`/bluerov_N/mavros/setpoint_velocity/cmd_vel`; the MAVROS configuration uses
+`BODY_NED`, and the controller converts FRD inputs to the ROS FLU input
+expected by MAVROS. ArduSub must be armed and in a mode that accepts guided
+velocity/position setpoints. The direct `gazebo` backend remains the default.
+
+The multi-ROV launch can also create an ArduSub SITL and MAVROS connection for
+each vehicle. Direct Gazebo thruster control remains the default; disable it
+when handing control to ArduSub:
+
+```bash
+ros2 launch dave_robot_models spawn_multiple_rovs.launch.py \
+  num_robots:=2 use_ardusub:=true use_velocity_controller:=false
+```
+
+`use_ardusub:=true` starts one ArduSub instance and one MAVROS node per ROV.
+`use_mavros:=true` starts only the MAVROS nodes, which is useful when the
+flight controllers are external. The MAVROS nodes are namespaced as
+`/bluerov_0/mavros`, `/bluerov_1/mavros`, and so on. ArduPilot's ten-port
+instance spacing is applied to the FDM, MAVLink, and GCS ports; override
+`fdm_port_base` or `mavros_port_base` when those port ranges are already in
+use.

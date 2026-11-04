@@ -10,6 +10,12 @@ mavros:
       - param
       - local*
       - global_position
+      - setpoint_position
+      - setpoint_velocity
+
+mavros/setpoint_velocity:
+  ros__parameters:
+    mav_frame: "BODY_NED"
 
 mavros_node:
   ros__parameters:

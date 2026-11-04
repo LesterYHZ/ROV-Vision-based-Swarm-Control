@@ -4,7 +4,9 @@ import unittest
 from bluerov_velocity_controller import (
     REAR_SWAY_RATIO,
     enu_flu_to_ned_frd,
+    frd_to_flu,
     mix_thruster_commands,
+    ned_frd_to_enu_flu,
     quaternion_error_vector,
     quaternion_rotate,
 )
@@ -105,6 +107,20 @@ class ThrusterMixerTest(unittest.TestCase):
         self.assertAlmostEqual(forward_ned[0], 0.0, places=12)
         self.assertAlmostEqual(forward_ned[1], 1.0, places=12)
         self.assertAlmostEqual(down_ned[2], 1.0, places=12)
+
+    def test_reference_pose_converts_from_ned_frd_to_enu_flu(self):
+        position, orientation = ned_frd_to_enu_flu(
+            (2.0, 3.0, 4.0), (0.0, 0.0, 0.0, 1.0)
+        )
+        self.assertEqual(position, (3.0, 2.0, -4.0))
+        forward_enu = quaternion_rotate(orientation, (1.0, 0.0, 0.0))
+        up_enu = quaternion_rotate(orientation, (0.0, 0.0, 1.0))
+        self.assertAlmostEqual(forward_enu[0], 0.0, places=12)
+        self.assertAlmostEqual(forward_enu[1], 1.0, places=12)
+        self.assertAlmostEqual(up_enu[2], 1.0, places=12)
+
+    def test_body_velocity_converts_from_frd_to_flu(self):
+        self.assertEqual(frd_to_flu((1.0, 2.0, 3.0)), (1.0, -2.0, -3.0))
 
     def test_attitude_error_uses_shortest_quaternion_rotation(self):
         half_angle = 0.2

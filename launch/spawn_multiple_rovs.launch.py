@@ -2,9 +2,17 @@ import os
 import tempfile
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction, TimerAction
-from launch.substitutions import LaunchConfiguration
+from launch.actions import (
+    DeclareLaunchArgument,
+    ExecuteProcess,
+    OpaqueFunction,
+    RegisterEventHandler,
+    TimerAction,
+)
+from launch.event_handlers import OnProcessStart
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
 
 def launch_setup(context, *args, **kwargs):
     # 1. 解析传入的数量和位置参数
@@ -14,6 +22,30 @@ def launch_setup(context, *args, **kwargs):
     base_z_str = LaunchConfiguration('base_z').perform(context)
     max_speed = float(LaunchConfiguration("max_speed").perform(context))
     command_timeout = float(LaunchConfiguration("command_timeout").perform(context))
+    control_backend = LaunchConfiguration("control_backend").perform(context)
+    use_velocity_controller = (
+        LaunchConfiguration("use_velocity_controller").perform(context).lower()
+        in ("1", "true", "yes", "on")
+    )
+    use_ardusub = (
+        LaunchConfiguration("use_ardusub").perform(context).lower()
+        in ("1", "true", "yes", "on")
+    )
+    use_mavros_requested = (
+        LaunchConfiguration("use_mavros").perform(context).lower()
+        in ("1", "true", "yes", "on")
+    )
+    # ArduSub is useful through MAVROS in the same way as the single-ROV
+    # launch, so enabling SITL also enables its per-ROV MAVROS bridge.
+    use_mavros = use_mavros_requested or use_ardusub
+    fdm_port_base = int(LaunchConfiguration("fdm_port_base").perform(context))
+    mavros_port_base = int(
+        LaunchConfiguration("mavros_port_base").perform(context)
+    )
+    ardusub_params = LaunchConfiguration("ardusub_params").perform(context)
+    ardusub_model = LaunchConfiguration("ardusub_model").perform(context)
+    ardusub_home = LaunchConfiguration("ardusub_home").perform(context)
+    mavros_file = LaunchConfiguration("mavros_file").perform(context)
     
     try:
         num_robots = int(num_robots_str)
@@ -87,6 +119,10 @@ def launch_setup(context, *args, **kwargs):
             "/model/bluerov2_heavy_camera/",
             f"/model/{unique_robot_name}/",
         )
+        car_sdf_content = car_sdf_content.replace(
+            "<fdm_port_in>9002</fdm_port_in>",
+            f"<fdm_port_in>{fdm_port_base + (i * 10)}</fdm_port_in>",
+        )
 
         # 存为系统级的临时隐藏专属模型文件
         tmp_dir = tempfile.gettempdir()
@@ -149,20 +185,81 @@ def launch_setup(context, *args, **kwargs):
         
         launch_entities.append(delayed_bridge)
 
-        velocity_controller_node = Node(
-            package="dave_robot_models",
-            executable="bluerov_velocity_controller.py",
-            name=f"{unique_robot_name}_motion_controller",
+        if use_velocity_controller:
+            velocity_controller_node = Node(
+                package="dave_robot_models",
+                executable="bluerov_velocity_controller.py",
+                name=f"{unique_robot_name}_motion_controller",
+                output="screen",
+                parameters=[{
+                    "reference_pose_topic": f"/model/{unique_robot_name}/reference_pose",
+                    "reference_velocity_topic": f"/model/{unique_robot_name}/reference_velocity",
+                    "odometry_topic": f"/model/{unique_robot_name}/odometry",
+                    "max_speed": max_speed,
+                    "command_timeout": command_timeout,
+                    "control_backend": control_backend,
+                    "mavros_namespace": f"{unique_robot_name}/mavros",
+                }],
+            )
+            launch_entities.append(velocity_controller_node)
+
+        instance = i
+        # ArduPilot's -I option offsets its ports by ten per instance.
+        mavros_port = mavros_port_base + (instance * 10)
+        mavros_namespace = f"{unique_robot_name}/mavros"
+
+        mavros_node = Node(
+            package="mavros",
+            executable="mavros_node",
+            namespace=mavros_namespace,
             output="screen",
-            parameters=[{
-                "reference_pose_topic": f"/model/{unique_robot_name}/reference_pose",
-                "reference_velocity_topic": f"/model/{unique_robot_name}/reference_velocity",
-                "odometry_topic": f"/model/{unique_robot_name}/odometry",
-                "max_speed": max_speed,
-                "command_timeout": command_timeout,
-            }],
+            parameters=[
+                mavros_file,
+                {
+                    "fcu_url": f"tcp://127.0.0.1:{mavros_port}",
+                    "gcs_url": f"udp://@localhost:{14550 + (instance * 10)}",
+                    "use_sim_time": True,
+                },
+            ],
         )
-        launch_entities.append(velocity_controller_node)
+
+        if use_ardusub:
+            ardusub_process = ExecuteProcess(
+                cmd=[
+                    "ardusub",
+                    "-w",
+                    "--model",
+                    ardusub_model,
+                    "--defaults",
+                    ardusub_params,
+                    "--sim-port-in",
+                    str(fdm_port_base + (instance * 10)),
+                    "--base-port",
+                    str(mavros_port_base + (instance * 10)),
+                    f"-I{instance}",
+                    "--home",
+                    ardusub_home,
+                ],
+                output="screen",
+            )
+            delayed_ardusub = TimerAction(
+                period=3.0,
+                actions=[ardusub_process],
+            )
+            launch_entities.append(delayed_ardusub)
+            if use_mavros:
+                launch_entities.append(
+                    RegisterEventHandler(
+                        OnProcessStart(
+                            target_action=ardusub_process,
+                            on_start=[mavros_node],
+                        )
+                    )
+                )
+        elif use_mavros:
+            launch_entities.append(
+                TimerAction(period=3.0, actions=[mavros_node])
+            )
 
     return launch_entities
 
@@ -175,6 +272,70 @@ def generate_launch_description():
         DeclareLaunchArgument("base_z", default_value="-2.0", description="所有潜水器的统一下潜深度"),
         DeclareLaunchArgument("max_speed", default_value="1.0", description="Maximum velocity command in m/s"),
         DeclareLaunchArgument("command_timeout", default_value="0.5", description="Seconds before a stale pose target captures the current pose"),
+        DeclareLaunchArgument(
+            "control_backend",
+            default_value="gazebo",
+            description="Controller backend: gazebo thrusters or mavros/ArduSub setpoints",
+        ),
+        DeclareLaunchArgument(
+            "use_velocity_controller",
+            default_value="true",
+            description="Launch the direct Gazebo thruster velocity controller",
+        ),
+        DeclareLaunchArgument(
+            "use_ardusub",
+            default_value="false",
+            description="Launch one ArduSub SITL instance per ROV",
+        ),
+        DeclareLaunchArgument(
+            "use_mavros",
+            default_value="false",
+            description="Launch one MAVROS node per ROV",
+        ),
+        DeclareLaunchArgument(
+            "fdm_port_base",
+            default_value="9002",
+            description="First ArduPilot Gazebo FDM UDP port; one port is allocated per ROV",
+        ),
+        DeclareLaunchArgument(
+            "mavros_port_base",
+            default_value="5760",
+            description="First ArduSub MAVLink TCP port; one port is allocated per ROV",
+        ),
+        DeclareLaunchArgument(
+            "mavros_file",
+            default_value=PathJoinSubstitution(
+                [
+                    FindPackageShare("dave_robot_models"),
+                    "config",
+                    "mavros",
+                    "mavros.yaml",
+                ]
+            ),
+            description="MAVROS parameter file",
+        ),
+        DeclareLaunchArgument(
+            "ardusub_params",
+            default_value=PathJoinSubstitution(
+                [
+                    FindPackageShare("dave_robot_models"),
+                    "config",
+                    "bluerov2_heavy_camera",
+                    "ardusub.parm",
+                ]
+            ),
+            description="ArduSub parameter file",
+        ),
+        DeclareLaunchArgument(
+            "ardusub_model",
+            default_value="JSON:127.0.0.1",
+            description="ArduSub SITL physics backend model string",
+        ),
+        DeclareLaunchArgument(
+            "ardusub_home",
+            default_value="35.074823,129.084798,0.0,270.0",
+            description="ArduSub HOME argument (lat,lon,alt,heading)",
+        ),
 
         OpaqueFunction(function=launch_setup)
     ])
