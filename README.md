@@ -113,8 +113,10 @@ ros2 launch dave_robot_models spawn_multiple_rovs.launch.py \
 
 `use_ardusub:=true` starts one ArduSub instance and one MAVROS node per ROV.
 `use_mavros:=true` starts only the MAVROS nodes, which is useful when the
-flight controllers are external. The MAVROS nodes are namespaced as
-`/bluerov_0/mavros`, `/bluerov_1/mavros`, and so on. ArduPilot's ten-port
+flight controllers are external. The MAVROS topics are namespaced as
+`/bluerov_0/mavros`, `/bluerov_1/mavros`, and so on. The launch places each
+MAVROS node under `/bluerov_N`; MAVROS adds its own `mavros` child namespace.
+ArduPilot's ten-port
 instance spacing is applied to the FDM, MAVLink, and GCS ports; override
 `fdm_port_base` or `mavros_port_base` when those port ranges are already in
 use.

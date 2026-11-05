@@ -206,12 +206,14 @@ def launch_setup(context, *args, **kwargs):
         instance = i
         # ArduPilot's -I option offsets its ports by ten per instance.
         mavros_port = mavros_port_base + (instance * 10)
+        # MAVROS creates its own "mavros" child namespace. Launching it under
+        # <robot>/mavros would therefore produce <robot>/mavros/mavros.
         mavros_namespace = f"{unique_robot_name}/mavros"
 
         mavros_node = Node(
             package="mavros",
             executable="mavros_node",
-            namespace=mavros_namespace,
+            namespace=unique_robot_name,
             output="screen",
             parameters=[
                 mavros_file,
