@@ -120,3 +120,17 @@ ArduPilot's ten-port
 instance spacing is applied to the FDM, MAVLink, and GCS ports; override
 `fdm_port_base` or `mavros_port_base` when those port ranges are already in
 use.
+
+## CBF collision avoidance example
+
+The standalone `scripts/cbf_collision.py` example uses SciPy's constrained
+optimizer. Install its dependencies in the Python environment used to run the
+script:
+
+```bash
+python -m pip install -r requirements-cbf.txt
+python scripts/cbf_collision.py
+```
+
+The requirements intentionally keep NumPy below version 2 and use SciPy 1.13,
+because newer SciPy releases require the NumPy 2.x API.

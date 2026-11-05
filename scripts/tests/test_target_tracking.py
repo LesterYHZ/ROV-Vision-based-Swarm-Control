@@ -37,8 +37,8 @@ from scripts.target_tracking import TargetTrackingController, TargetVelocityEsti
 
 
 # ---------------------------- User settings ---------------------------- #
-DT = 0.05                         # simulation sample time [s]
-SIM_TIME = 100.0                  # total simulation time [s]
+DT = 0.1                         # simulation sample time [s]
+SIM_TIME = 200.0                  # total simulation time [s]
 DESIRED_REL_FRD = np.array([10.0, 0.0, 0.0])  # target 10 m ahead [m]
 
 INITIAL_VEHICLE_NED = np.array([0.0, 0.0, 20.0])
@@ -178,10 +178,10 @@ def make_controller(mode: str) -> TargetTrackingController:
     if mode == "alos":
         return TargetTrackingController(
             controller="alos",
-            delta_h=5.0,
-            delta_v=3.0,
-            gamma_h=0.005,
-            gamma_v=0.005,
+            delta_h=10.0,
+            delta_v=10.0,
+            gamma_h=0.00,
+            gamma_v=0.00,
             k_along=0.30,
             beta_inner=0.4,
             beta_outer=0.7,
