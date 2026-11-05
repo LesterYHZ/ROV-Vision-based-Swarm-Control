@@ -1,7 +1,7 @@
 import math
 import unittest
 
-from bluerov_velocity_controller import (
+from scripts.bluerov_velocity_controller import (
     REAR_SWAY_RATIO,
     enu_flu_to_ned_frd,
     frd_to_flu,
