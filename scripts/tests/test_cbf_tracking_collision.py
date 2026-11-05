@@ -104,7 +104,7 @@ class TargetVehicleNED:
     def velocity_ned(self, time_s: float) -> np.ndarray:
         return np.array(
             [
-                1.00,
+                0.5,
                 0.22 * math.sin(0.06 * time_s),
                 0.04 * math.cos(0.04 * time_s),
             ], dtype=float,
