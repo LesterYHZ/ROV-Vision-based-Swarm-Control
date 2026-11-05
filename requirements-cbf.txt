@@ -1,3 +1,4 @@
 # SciPy 1.18 requires NumPy 2.x. Keep the CBF example on the NumPy 1.x API.
 numpy>=1.24,<2
 scipy>=1.13,<1.14
+matplotlib>=3.7 

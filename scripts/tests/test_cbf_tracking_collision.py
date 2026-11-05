@@ -79,7 +79,7 @@ TAIL_RMS_LIMIT_M = 2.0
 FINAL_ERROR_LIMIT_M = 3.0
 MAX_ERROR_LIMIT_M = 45.0
 
-OUTPUT_DIR = Path(__file__).resolve().parent
+OUTPUT_DIR = Path(__file__).resolve().parent / "closed_loop_with_cbf_results"
 
 
 # ----------------------------- Coordinate transforms -------------------- #

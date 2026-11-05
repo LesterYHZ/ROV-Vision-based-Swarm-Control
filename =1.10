@@ -1,0 +1,7 @@
+Collecting scipy
+  Downloading scipy-1.18.1-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (62 kB)
+Requirement already satisfied: numpy<2.8,>=2.0.0 in /home/ayaya/miniconda3/lib/python3.14/site-packages (from scipy) (2.5.4)
+Downloading scipy-1.18.1-cp314-cp314-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl (35.3 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 35.3/35.3 MB 23.9 MB/s  0:00:01
+Installing collected packages: scipy
+Successfully installed scipy-1.18.1
