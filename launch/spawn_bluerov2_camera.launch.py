@@ -20,6 +20,13 @@ def launch_setup(context, *args, **kwargs):
     yaw = LaunchConfiguration('yaw').perform(context)
     max_speed = float(LaunchConfiguration("max_speed").perform(context))
     command_timeout = float(LaunchConfiguration("command_timeout").perform(context))
+    control_backend = LaunchConfiguration("control_backend").perform(context).lower()
+    use_ardusub = (
+        LaunchConfiguration("use_ardusub").perform(context).lower()
+        in ("1", "true", "yes", "on")
+    )
+    if control_backend == "auto":
+        control_backend = "mavros" if use_ardusub else "gazebo"
 
     # 2. 定位我们在 description 目录下的原始自定义模型模板 (SDF)
     pkg_share = get_package_share_directory('dave_robot_models')
@@ -152,6 +159,7 @@ def launch_setup(context, *args, **kwargs):
             "reference_velocity_topic": f"/model/{namespace}/reference_velocity",
             "odometry_topic": f"/model/{namespace}/odometry",
             "mavros_namespace": "mavros",
+            "control_backend": control_backend,
             "max_speed": max_speed,
             "command_timeout": command_timeout,
         }],
@@ -188,11 +196,23 @@ def generate_launch_description():
         DeclareLaunchArgument("joystick_ws_port", default_value="8765", description="Bind port for websocket"),
         DeclareLaunchArgument("open_qgc", default_value="false", description="Launch QGroundControl"),
         DeclareLaunchArgument("open_virtual_joystick", default_value="false", description="Open virtual joystick in Firefox"),
-        DeclareLaunchArgument("virtual_joystick_url", default_value="https://github.io", description="URL for virtual joystick"),
+        DeclareLaunchArgument(
+            "virtual_joystick_url",
+            default_value=(
+                "https://ioes-lab.github.io/dave/extras/virtual_joystick.html"
+                "?host=127.0.0.1&port=8765"
+            ),
+            description="URL for virtual joystick",
+        ),
         DeclareLaunchArgument("ui_launch_delay", default_value="2.0", description="Delay before launching UI"),
         DeclareLaunchArgument("zoom_camera_delay", default_value="2.0", description="Delay for zoom camera"),
         DeclareLaunchArgument("max_speed", default_value="1.0", description="Maximum velocity command in m/s"),
         DeclareLaunchArgument("command_timeout", default_value="0.5", description="Seconds before a stale pose target captures the current pose"),
+        DeclareLaunchArgument(
+            "control_backend",
+            default_value="auto",
+            description="Controller backend: auto, gazebo thrusters, or mavros/ArduSub setpoints",
+        ),
 
         OpaqueFunction(function=launch_setup)
     ])

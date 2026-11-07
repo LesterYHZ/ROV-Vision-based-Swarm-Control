@@ -126,8 +126,8 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "virtual_joystick_url",
             default_value=(
-                "https://raw.githubusercontent.com/IOES-Lab/dave/"
-                "refs/heads/ros2/extras/virtual_joystick.html"
+                "https://ioes-lab.github.io/dave/extras/virtual_joystick.html"
+                "?host=127.0.0.1&port=8765"
             ),
             description="URL for the virtual joystick page",
         ),

@@ -19,6 +19,7 @@ install(
     scripts/ws_to_joy.py
     scripts/rov_tag_detector.py
     scripts/bluerov_velocity_controller.py
+    scripts/ardusub_auto_arm_guided.py
     scripts/target_tracking.py
   DESTINATION lib/${PROJECT_NAME}
 )

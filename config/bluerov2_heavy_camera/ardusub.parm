@@ -67,20 +67,19 @@ EK2_ENABLE 0
 EK3_ENABLE 1
 AHRS_EKF_TYPE 3
 
-# Enable external nav
-# From https://ardupilot.org/copter/docs/common-vio-tracking-camera.html
-GPS_TYPE 1            # Enable GPS
-SIM_GPS_DISABLE 0     # Ensure sim GPS is enabled
-SIM_GPS_LOCK 1        # Simulate GPS lock
-VISO_TYPE 1           # External vision
-EK3_SRC1_POSXY 6      # External nav
-EK3_SRC1_VELXY 6      # External nav
+# This launch does not send external-vision data to ArduSub.
+GPS1_TYPE 1           # Use the simulated UBlox GPS
+SIM_GPS1_ENABLE 1     # Explicitly enable the SITL GPS backend
+SIM_GPS1_TYPE 1       # Simulate a UBlox GPS
+VISO_TYPE 0           # Disable unused external vision input
+EK3_SRC1_POSXY 3      # GPS
+EK3_SRC1_VELXY 3      # GPS
 EK3_SRC1_POSZ 1       # Baro is the primary z source
-EK3_SRC1_VELZ 6       # External nav z velocity influences EKF
-COMPASS_USE 0         # Disable compass 1
+EK3_SRC1_VELZ 3       # GPS vertical velocity
+COMPASS_USE 1         # Use simulated compass for EKF yaw
 COMPASS_USE2 0        # Disable compass 2
 COMPASS_USE3 0        # Disable compass 3
-EK3_SRC1_YAW 6        # External nav
+EK3_SRC1_YAW 1        # Compass
 
 # See https://github.com/clydemcqueen/bluerov2_ignition/issues/7
 SIM_BARO_RND 0.01

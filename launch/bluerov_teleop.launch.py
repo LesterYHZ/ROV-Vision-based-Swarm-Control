@@ -94,9 +94,11 @@ def generate_launch_description():
 
     web_hint = LogInfo(
         msg=[
-            "Web joystick enabled. Open extras/virtual_joystick.html and "
-            "connect to ws://127.0.0.1:",
+            "Web joystick enabled. Open the HTML page at "
+            "https://ioes-lab.github.io/dave/extras/virtual_joystick.html"
+            "?host=127.0.0.1&port=",
             joystick_ws_port,
+            ". Do not open the ws:// URL directly.",
         ],
         condition=IfCondition(use_web_joystick),
     )

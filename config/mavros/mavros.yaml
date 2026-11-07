@@ -10,10 +10,12 @@ mavros:
       - param
       - local*
       - global_position
+      - vision_pose_estimate
       - setpoint_position
       - setpoint_velocity
+      - statustext
 
-mavros/setpoint_velocity:
+/**/setpoint_velocity:
   ros__parameters:
     mav_frame: "BODY_NED"
 

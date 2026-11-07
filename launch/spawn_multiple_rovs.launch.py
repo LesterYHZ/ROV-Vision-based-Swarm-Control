@@ -22,13 +22,17 @@ def launch_setup(context, *args, **kwargs):
     base_z_str = LaunchConfiguration('base_z').perform(context)
     max_speed = float(LaunchConfiguration("max_speed").perform(context))
     command_timeout = float(LaunchConfiguration("command_timeout").perform(context))
-    control_backend = LaunchConfiguration("control_backend").perform(context)
+    control_backend = LaunchConfiguration("control_backend").perform(context).lower()
     use_velocity_controller = (
         LaunchConfiguration("use_velocity_controller").perform(context).lower()
         in ("1", "true", "yes", "on")
     )
     use_ardusub = (
         LaunchConfiguration("use_ardusub").perform(context).lower()
+        in ("1", "true", "yes", "on")
+    )
+    auto_arm_guided = (
+        LaunchConfiguration("auto_arm_guided").perform(context).lower()
         in ("1", "true", "yes", "on")
     )
     use_mavros_requested = (
@@ -38,6 +42,8 @@ def launch_setup(context, *args, **kwargs):
     # ArduSub is useful through MAVROS in the same way as the single-ROV
     # launch, so enabling SITL also enables its per-ROV MAVROS bridge.
     use_mavros = use_mavros_requested or use_ardusub
+    if control_backend == "auto":
+        control_backend = "mavros" if use_ardusub else "gazebo"
     fdm_port_base = int(LaunchConfiguration("fdm_port_base").perform(context))
     mavros_port_base = int(
         LaunchConfiguration("mavros_port_base").perform(context)
@@ -258,6 +264,16 @@ def launch_setup(context, *args, **kwargs):
                         )
                     )
                 )
+            if auto_arm_guided:
+                launch_entities.append(
+                    Node(
+                        package="dave_robot_models",
+                        executable="ardusub_auto_arm_guided.py",
+                        name=f"{unique_robot_name}_auto_arm_guided",
+                        output="screen",
+                        parameters=[{"mavros_namespace": mavros_namespace}],
+                    )
+                )
         elif use_mavros:
             launch_entities.append(
                 TimerAction(period=3.0, actions=[mavros_node])
@@ -276,8 +292,8 @@ def generate_launch_description():
         DeclareLaunchArgument("command_timeout", default_value="0.5", description="Seconds before a stale pose target captures the current pose"),
         DeclareLaunchArgument(
             "control_backend",
-            default_value="gazebo",
-            description="Controller backend: gazebo thrusters or mavros/ArduSub setpoints",
+            default_value="auto",
+            description="Controller backend: auto, gazebo thrusters, or mavros/ArduSub setpoints",
         ),
         DeclareLaunchArgument(
             "use_velocity_controller",
@@ -288,6 +304,11 @@ def generate_launch_description():
             "use_ardusub",
             default_value="false",
             description="Launch one ArduSub SITL instance per ROV",
+        ),
+        DeclareLaunchArgument(
+            "auto_arm_guided",
+            default_value="true",
+            description="Automatically enter GUIDED and arm each launched ArduSub SITL vehicle",
         ),
         DeclareLaunchArgument(
             "use_mavros",

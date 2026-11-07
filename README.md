@@ -98,9 +98,11 @@ In this mode, pose references are published to
 `/bluerov_N/mavros/setpoint_position/local` after conversion to MAVROS ENU/FLU
 coordinates. Velocity references are published to
 `/bluerov_N/mavros/setpoint_velocity/cmd_vel`; the MAVROS configuration uses
-`BODY_NED`, and the controller converts FRD inputs to the ROS FLU input
-expected by MAVROS. ArduSub must be armed and in a mode that accepts guided
-velocity/position setpoints. The direct `gazebo` backend remains the default.
+`BODY_NED`, and the controller converts FRD inputs to ROS FLU before MAVROS
+converts them back to the aircraft FRD frame. ArduSub must be armed and in a mode that accepts guided
+velocity/position setpoints. The launch backend defaults to `auto`: it selects
+MAVROS when `use_ardusub:=true`, and Gazebo otherwise. You can still override
+it explicitly with `control_backend:=gazebo` or `control_backend:=mavros`.
 
 The multi-ROV launch can also create an ArduSub SITL and MAVROS connection for
 each vehicle. Direct Gazebo thruster control remains the default; disable it
@@ -108,10 +110,46 @@ when handing control to ArduSub:
 
 ```bash
 ros2 launch dave_robot_models spawn_multiple_rovs.launch.py \
-  num_robots:=2 use_ardusub:=true use_velocity_controller:=false
+  num_robots:=2 use_ardusub:=true \
+  use_velocity_controller:=true control_backend:=mavros
 ```
 
+The default ArduSub parameters explicitly enable the SITL simulated UBlox GPS
+using `GPS1_TYPE`, `SIM_GPS1_ENABLE`, and `SIM_GPS1_TYPE`. The EKF uses this
+GPS for horizontal position and velocity, and the simulated compass for yaw.
+External vision is disabled because this launch does not send vision data to
+ArduSub. The altitude source remains the barometer.
+
+Before publishing a target, verify that the state really changed to a guided
+mode. A successful `set_mode` service response only means that MAVROS sent the
+request; it does not mean ArduSub accepted it. The state should show
+`mode: GUIDED` (or another mode configured to accept guided setpoints) and
+`guided: true`. `mode: MANUAL` with `guided: false` will not track the
+controller's position or velocity setpoints.
+
+The reference callbacks require the documented frame IDs. For example:
+
+```bash
+ros2 topic pub -r 10 /model/bluerov_0/reference_velocity \
+  geometry_msgs/msg/TwistStamped \
+  "{header: {frame_id: frd}, twist: {linear: {x: 0.2, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}}"
+```
+
+```bash
+ros2 topic pub -r 10 /model/bluerov_0/reference_pose \
+  geometry_msgs/msg/PoseStamped \
+  "{header: {frame_id: ned}, pose: {position: {x: 1.0, y: 0.0, z: 0.0}, orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0}}}"
+```
+
+Do not omit `frame_id`: the controller intentionally ignores velocity targets
+unless it is exactly `frd`, and ignores pose targets unless it is exactly
+`ned`. Publish continuously at least at 2-10 Hz because stale targets are
+stopped after `command_timeout`.
+
 `use_ardusub:=true` starts one ArduSub instance and one MAVROS node per ROV.
+It also waits for a GPS fix, requests `GUIDED`, and arms each SITL vehicle.
+Disable automatic startup arming and mode selection with
+`auto_arm_guided:=false`.
 `use_mavros:=true` starts only the MAVROS nodes, which is useful when the
 flight controllers are external. The MAVROS topics are namespaced as
 `/bluerov_0/mavros`, `/bluerov_1/mavros`, and so on. The launch places each
@@ -120,6 +158,25 @@ ArduPilot's ten-port
 instance spacing is applied to the FDM, MAVLink, and GCS ports; override
 `fdm_port_base` or `mavros_port_base` when those port ranges are already in
 use.
+
+The multi-ROV launch intentionally does not open QGroundControl or the virtual
+joystick page. It also does not start the websocket joystick bridge, because
+the existing bridge publishes one shared `/joy` topic and the page has no
+vehicle selector. Start the page only with a teleop launch that also starts
+its matching websocket server.
+
+The virtual joystick URL must serve the file as `text/html`. Do not use the
+GitHub Raw URL: GitHub serves that response as `text/plain`, so Firefox can
+show a blank/loading document instead of rendering the controls. files now use the GitHub Pages URL:
+
+```text
+https://ioes-lab.github.io/dave/extras/virtual_joystick.html?host=127.0.0.1&port=8765
+```
+
+Open the HTML page above, not `ws://127.0.0.1:8765` directly. The latter is
+only the WebSocket transport endpoint; navigating to it as a normal webpage
+produces an `invalid Connection header: keep-alive` error. The HTML page opens
+that WebSocket connection from JavaScript.
 
 ## CBF collision avoidance example
 
