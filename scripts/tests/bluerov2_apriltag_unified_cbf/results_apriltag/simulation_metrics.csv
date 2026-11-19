@@ -1,0 +1,15 @@
+metric,with_unified_apriltag_cbf,without_cbf
+tail_rms_tag_tracking_error_m,1.0196865134920496,33.02006771586245
+final_tag_tracking_error_m,1.015400906931259,36.79004175690705
+physical_apriltag_loss_samples,0,3466
+physical_apriltag_loss_seconds,0.0,173.3
+effective_guard_violation_samples,57,3476
+max_abs_relative_heading_deg,9.81695386776675,179.97119309915672
+max_tag_incidence_deg,30.25323861766059,126.55240793691665
+max_tag_forward_range_m,4.194143061799331,13.565877372329137
+collision_samples,0,0
+qp_infeasible_samples,0,0
+min_static_clearance_m,0.2739515337271954,1.9371445545419324
+min_fleet_clearance_m,3.6538724774866997,3.978419150817201
+mean_qp_intervention,0.00494042633436023,0.16051595911760844
+mean_active_constraints,0.02975,0.0
