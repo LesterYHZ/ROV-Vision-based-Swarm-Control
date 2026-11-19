@@ -14,6 +14,7 @@ where `u`, `v`, `w` are desired body-FRD surge, sway, and heave velocities (m/s)
 
 - `apriltag_pose.py`: converts AprilTag PnP output into leader-ROV pose using a calibrated rigid tag-to-leader transform; includes OpenCV optical-frame to body-FRD conversion.
 - `tracking_controller.py`: nominal tail-tag relative-position and relative-heading tracker.
+- `frequency_domain_analysis.py`: small-signal analytical and logged-data FFT frequency-response analysis for the tracker.
 - `unified_cbf.py`: one QP combining obstacle collision avoidance, horizontal/vertical camera FOV, near/far range, relative heading, and tag-face incidence constraints.
 - `bluerov2_dynamics.py`: transparent reduced-order 4-DOF BlueROV2-Heavy-style simulation model with a finite-bandwidth velocity loop.
 - `run_apriltag_rov_sim.py`: figure-eight closed-loop simulation and 3D visualization of both ROV headings, the tail tag, and follower camera FOV.
@@ -94,6 +95,25 @@ The same QP imposes the first-order exponential CBF constraints
 for every camera, relative-heading, tag-incidence, and collision barrier. It minimizes weighted deviation from the nominal tracking command, with command and command-slew bounds. For two detected obstacles, the QP has six geometric camera/range rows, two relative-heading rows, one tag-incidence row, and two collision rows: 11 safety inequalities in total.
 
 The relative target translational velocity and leader angular velocity are estimated from successive timestamped pose measurements, together with the follower's measured velocity and angular rates. The camera lever arm is included in the relative-position kinematics.
+
+## Frequency-domain analysis
+
+The tracker has no internal state, so its unsaturated small-signal response is a
+constant gain matrix. `frequency_domain_analysis.py` linearizes that mapping
+around the nominal stand-off and adds an optional first-order vehicle velocity
+model to produce a Bode plot:
+
+```bash
+python frequency_domain_analysis.py --plot tracker_bode.png
+```
+
+The script maps `[dx, dy, dz, dvx, dvy, dvz, dpsi, dleader_r]` to
+`[du, dv, dw, dr]`. Use `estimate_fft_response()` when synchronized input and
+output logs are available. The FFT estimator expects one input to be excited at
+a time; for simultaneous excitation, use the analytical model or a MIMO
+spectral estimator. Saturation and the unified CBF-QP are not represented by
+the linearization, so analyze operating points where the command is not
+saturated and separately inspect safety-filter intervention.
 
 ## Run the simulation and tests
 
