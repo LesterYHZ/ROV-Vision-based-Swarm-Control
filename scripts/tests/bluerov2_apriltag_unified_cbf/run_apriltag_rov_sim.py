@@ -520,8 +520,8 @@ def write_metrics(c, b, outdir):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--duration", type=float, default=200.0)
-    ap.add_argument("--dt", type=float, default=0.05)
+    ap.add_argument("--duration", type=float, default=300.0)
+    ap.add_argument("--dt", type=float, default=0.1)
     ap.add_argument("--outdir", type=Path, default=Path("results_apriltag"))
     args = ap.parse_args()
     args.outdir.mkdir(parents=True, exist_ok=True)

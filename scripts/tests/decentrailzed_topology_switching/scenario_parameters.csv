@@ -1,0 +1,20 @@
+parameter,value,units_or_notes
+simulation_duration,300,s
+sampling_interval,0.1,s
+leader_figure8_period,300,s
+camera_horizontal_fov,140,deg
+camera_vertical_fov,100,deg
+camera_max_range,22,m
+camera_min_range,1,m
+selector_q_enter,0.02,unitless
+selector_q_keep,0.012,unitless
+desired_parent_range,5,m
+topology_update_period,0.5,s
+switch_penalty,0.12,selector cost
+switch_margin,0.035,selector cost
+minimum_dwell,1,s
+static_obstacles,5,count
+f1_to_f2_local_occlusion_end,32,s
+f1_to_leader_local_dropout_start,32,s
+f1_to_leader_local_dropout_end,52,s
+random_seed,4,integer
